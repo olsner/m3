@@ -1,6 +1,6 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 
-module CppLexer where
+module CppLexer (lexCpp) where
 
 import Control.Applicative --hiding ((<|>),many)
 import Control.Arrow

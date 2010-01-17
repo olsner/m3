@@ -1,0 +1,69 @@
+{-# LANGUAGE NoMonomorphismRestriction #-}
+
+import Control.Applicative
+
+import Data.Maybe
+
+import AST
+import CppToken
+import CppLexer (lexCpp)
+import Parser
+
+pUnit = Unit <$> many pImport <*> (pModule <|> pFunction)
+
+pModule = keyword "module" >> (Decl <$> pName) <* token Semicolon <*> (ModuleDef <$> many pFunction) <* eof
+
+pImport = keyword "import" >> pName <* token Semicolon
+pSimpleName = StringName <$> identifier
+pName = QualifiedName <$> sepBy1 identifier (token DoubleColon)
+
+pFunction = (\ret nm params code -> Decl nm (FunctionDef ret params code)) <$>
+  pType <*> pName <*> pFormalParamList <*> pCompoundStatement
+
+pFormalParamList = inParens (listOf pFormalParam)
+pCompoundStatement = inBraces (many pStatement)
+
+pFormalParam = FormalParam <$> pType <*> optional pSimpleName
+
+infixl 3 $>
+($>) = flip (<$)
+
+pType = pArraySuffix =<< choice
+  [keyword "void" $> TVoid
+  ,keyword "int" $> TInt
+  ,keyword "char" $> TChar
+  ,keyword "const" >> (TConst <$> pType)
+  ,inBrackets (TPtr <$> pType)
+  ]
+pArraySuffix t = optional (inBrackets integer) >>= maybe (return t) (pArraySuffix . flip TArray t)
+
+pStatement = choice $
+  [token Semicolon $> EmptyStatement
+  ]
+
+keyword str = token (Identifier str) <|> token (Reserved str)
+parseJust f = fromJust . f <$> satisfy (isJust . f)
+identifier = parseJust fromIdentifier
+integer = parseJust fromIntegerTok
+
+fromIdentifier (Identifier s) = Just s
+fromIdentifier (Reserved s) = Just s
+fromIdentifier _ = Nothing
+
+fromIntegerTok (IntegerTok i) = Just i
+fromIntegerTok _ = Nothing
+
+inBraces p = token OpenBrace *> p <* token CloseBrace
+inBrackets p = token OpenBracket *> p <* token CloseBracket
+inParens p = token OpenParen *> p <* token CloseParen
+
+listOf p = sepBy p (token Comma)
+
+main = do
+  input <- readFile "ex1.m"
+  let res = lexCpp "ex1.m" input
+  print res
+  let Right tokens = res
+  mapM_ print (map snd tokens)
+  let unit = runParser pUnit (map snd tokens)
+  print unit

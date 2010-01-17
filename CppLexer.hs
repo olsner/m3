@@ -7,6 +7,7 @@ import Control.Arrow
 import Control.Monad
 
 import Data.Char
+import Data.Maybe
 
 import Numeric
 
@@ -40,9 +41,9 @@ lexCpp filename source = Right $ fst $ runParser file source
 		--position = setSourceColumn (initialPos filename) 0
 		position = initialPos filename
 
-file = fmap concat (many cppToken)
+file = catMaybes <$> many cppToken
 
-cppToken :: Lexer [Token]
+cppToken :: Lexer (Maybe Token)
 cppToken = choice
 	[comment
 	,operator
@@ -52,8 +53,8 @@ cppToken = choice
 	,whiteSpace
 	,saveTokPos (fmap (StringTok . (:[])) anychar)]
 
-saveTokPos :: Lexer Tok -> Lexer [Token]
-saveTokPos m = getPosition >>= \pos -> m >>= \t -> return [(pos,t)]
+saveTokPos :: Lexer Tok -> Lexer (Maybe Token)
+saveTokPos m = getPosition >>= \pos -> m >>= \t -> return (Just (pos,t))
 
 charTok :: (Char,Char -> a) -> Lexer a
 charTok (c,f) = fmap f (char c)
@@ -62,7 +63,9 @@ anychar = next
 -- TODO Handle escaped newlines (should we take note of escaped newlines in comments!?)
 takeRestOfLine = many (satisfy (/= '\n')) <* match "\n"
 
-preprocLine = try $ do
+ignore p = p >> return Nothing
+
+preprocLine = ignore $ try $ do
 	pos <- getPosition
 	unless (sourceColumn pos == 1) (fail "Retry other token")
 	many whiteSpace
@@ -70,17 +73,17 @@ preprocLine = try $ do
 	pos <- saveTokPos (char '#' >> fmap StringTok takeRestOfLine)
 	-- Since they are mostly spam, ignore preprocLines for now
 	-- We should take in # line file-lines and update SourcePos with the information
-	return []
+	return ()
 
-whiteSpace = oneOf " \t\n" >> return []
-comment = char '/' >> (choice . map try $
+whiteSpace = ignore $ oneOf " \t\n"
+comment = char '/' >> ignore (choice . map try $
 	[char '*' <* cCommentTail
-	,char '/' <* takeRestOfLine]) >> return []
+	,char '/' <* takeRestOfLine])
 
 cCommentTail = choice
-	[char '*' >> ((char '/' >> return ()) <|> cCommentTail)
-	,many1 (satisfy (/= '*')) >> cCommentTail >> return ()
-	,fail "Unterminated comment" >> many anychar >> return ()]
+	[char '*' >> (ignore (char '/') <|> cCommentTail)
+	,many1 (satisfy (/= '*')) >> cCommentTail
+	,fail "Unterminated comment" >> ignore (many anychar)]
 
 operator = saveTokPos (choice [try multiCharOperator,oneCharOperator])
 multiCharOperator = choice (map (\(s,tok) -> match s >> return tok) multiCharOperators)

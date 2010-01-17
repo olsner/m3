@@ -46,6 +46,7 @@ instance Functor (Parser t) where
   fmap = onP . first . fmap
 
 instance Applicative (Parser t) where
+  {-# INLINE pure #-}
   pure x = P $ \ts -> (Right x, ts)
   pf <*> pa = continue `onP` pf
     where
@@ -55,6 +56,7 @@ instance Applicative (Parser t) where
 instance Monad (Parser t) where
   return = pure
   fail x = P $ \ts -> (Left x, ts)
+  {-# INLINE (>>=) #-}
   (P p) >>= q = P $ \ts ->
     case p ts of
       (Right x, ts') -> unP (q x) ts'
@@ -70,12 +72,14 @@ onFail = (<|>)
 guardMsg b msg = unless b (fail msg)
 guardM b msg = b >>= flip unless (fail msg)
 
+{-# INLINE next #-}
 next = P f
   where
     -- guardM (gets (not . null)) "Ran out of input (EOF)" >> (gets head <* modify tail)
     f [] = (Left "Ran out of input (EOF)", [])
     f (t:ts) = (Right t, ts)
 
+{-# INLINE satisfy #-}
 satisfy p = next >>= \x -> guardMsg (p x) "Parse.satisfy: failed" >> return x
 
 token t = satisfy (== t)
@@ -96,4 +100,6 @@ sepBy p s = sepBy1 p s <|> pure []
 match (x:xs) = list (satisfy (== x)) (match xs)
 match [] = return []
 
-choice = foldr (<|>) (fail "oneOf ran out of alternatives")
+{-# INLINE choice #-}
+choice :: [Parser t a] -> Parser t a
+choice = foldr (<|>) (fail "choice ran out of alternatives")

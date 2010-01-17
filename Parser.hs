@@ -26,8 +26,6 @@ import Control.Monad.Error
 
 newtype Parser t a = P { unP :: [t] -> (Either String a, [t]) }
 
-newtype Parser' t a = P' { unP' :: ErrorT String (State [t]) a }
-
 infixr 9 .:
 {-# INLINE (.:) #-}
 (.:) = (.).(.)

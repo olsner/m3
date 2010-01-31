@@ -10,6 +10,7 @@ data Unit = Unit { unitImports :: [Name], unitDecl :: Decl } deriving (Show,Eq)
 data Statement =
     EmptyStmt
   | ReturnStmt Expr
+  | ReturnStmtVoid
   | ExprStmt Expr
   
   deriving (Show,Eq)

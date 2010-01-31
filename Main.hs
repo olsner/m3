@@ -39,6 +39,7 @@ pArraySuffix t = optional (inBrackets integer) >>= maybe (return t) (pArraySuffi
 
 pStatement = choice $
   [token Semicolon $> EmptyStmt
+  ,keyword "return" >> token Semicolon >> return ReturnStmtVoid
   ,keyword "return" *> (ReturnStmt <$> pExpression) <* token Semicolon
   ,ExprStmt <$> pExpression >>= \t -> t `seq` token Semicolon >> return t
   --,CompoundStmt <$> inBraces (many pStatement)

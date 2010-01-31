@@ -1,8 +1,12 @@
-{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE NoMonomorphismRestriction,CPP #-}
+
+#ifndef USE_PARSEC
+#define USE_PARSEC 1
+#endif
 
 module CppLexer (lexCpp) where
 
-import Control.Applicative --hiding ((<|>),many)
+import Control.Applicative hiding ((<|>),many)
 import Control.Arrow
 import Control.Monad
 
@@ -11,35 +15,41 @@ import Data.Maybe
 
 import Numeric
 
---import Text.ParserCombinators.Parsec
-import Text.ParserCombinators.Parsec.Pos
-import Parser
-
 -- Token, Tok
 import CppToken
 
---type Lexer a = GenParser Char () a
+import Text.ParserCombinators.Parsec.Pos
+#if USE_PARSEC
+import Text.ParserCombinators.Parsec
+#else
+import Parser
+import Control.Applicative ((<|>),many)
+#endif
+
+#if USE_PARSEC
+type Lexer a = GenParser Char () a
+next = satisfy (const True)
+match xs = try (match' xs)
+match' [] = return []
+match' (x:xs) = liftM2 (:) (satisfy (== x)) (match' xs)
+#else
 type Lexer a = Parser Char a
-
-x `over` y = x <* y
-(.:) = (.).(.)
-
 oneOf = choice . map char
 char = token
 getPosition = return (initialPos "")
 try = id
 type ParseError = String
-{-next = satisfy (const True)
-match xs = try (match' xs)
-match' [] = return []
-match' (x:xs) = liftM2 (:) (satisfy (== x)) (match' xs)-}
+#endif
 
 lexCpp :: String -> String -> Either ParseError [Token]
-lexCpp filename source = Right $ fst $ runParser file source
---lexCpp filename source = runParser file () "cmd-line" source
+#if USE_PARSEC
+lexCpp filename source = runParser file () "cmd-line" source
 	where
 		--position = setSourceColumn (initialPos filename) 0
 		position = initialPos filename
+#else
+lexCpp filename source = Right $ fst $ runParser file source
+#endif
 
 file = catMaybes <$> many cppToken
 

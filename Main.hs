@@ -38,13 +38,35 @@ pType = pArraySuffix =<< choice
 pArraySuffix t = optional (inBrackets integer) >>= maybe (return t) (pArraySuffix . flip TArray t)
 
 pStatement = choice $
-  [token Semicolon $> EmptyStatement
+  [token Semicolon $> EmptyStmt
+  ,keyword "return" *> (ReturnStmt <$> pExpression) <* token Semicolon
+  ,ExprStmt <$> pExpression >>= \t -> t `seq` token Semicolon >> return t
+  --,CompoundStmt <$> inBraces (many pStatement)
+  ]
+
+pExpression = pLeftExpression <**> pExpressionSuffix
+
+pLeftExpression = choice
+  [inParens pExpression
+  ,EVarRef <$> pName
+  ,EString <$> string
+  ,EInt <$> integer
+  ]
+
+pAssignmentOperator = token Assignment -- TODO Also handle operator-assignments, once lexer and token definitions have it.
+
+pExpressionSuffix :: Parser Tok (Expr -> Expr)
+pExpressionSuffix = choice
+  [flip <$> (EAssignment <$> pAssignmentOperator) <*> pExpression
+  ,flip EFunCall <$> inParens (listOf pExpression)
+  ,return id
   ]
 
 keyword str = token (Identifier str) <|> token (Reserved str)
 parseJust f = fromJust . f <$> satisfy (isJust . f)
 identifier = parseJust fromIdentifier
 integer = parseJust fromIntegerTok
+string = parseJust fromStringTok
 
 fromIdentifier (Identifier s) = Just s
 fromIdentifier (Reserved s) = Just s
@@ -52,6 +74,9 @@ fromIdentifier _ = Nothing
 
 fromIntegerTok (IntegerTok i) = Just i
 fromIntegerTok _ = Nothing
+
+fromStringTok (StringTok s) = Just s
+fromStringTok _ = Nothing
 
 inBraces p = token OpenBrace *> p <* token CloseBrace
 inBrackets p = token OpenBracket *> p <* token CloseBracket
@@ -62,8 +87,8 @@ listOf p = sepBy p (token Comma)
 main = do
   input <- readFile "ex1.m"
   let res = lexCpp "ex1.m" input
-  print res
+  --print res
   let Right tokens = res
-  mapM_ print (map snd tokens)
+  --mapM_ print (map snd tokens)
   let unit = runParser pUnit (map snd tokens)
   print unit

@@ -99,11 +99,14 @@ inParens p = token OpenParen *> p <* token CloseParen
 
 listOf p = sepBy p (token Comma)
 
-main = do
-  input <- readFile "ex1.m"
-  let res = lexCpp "ex1.m" input
+parse path = do
+  input <- readFile path
+  let res = lexCpp path input
   --print res
   let Right tokens = res
   --mapM_ print (map snd tokens)
-  let unit = runParser pUnit (map snd tokens)
-  print unit
+  return (runParser pUnit (map snd tokens))
+
+main = do
+  print =<< parse "ex1.m"
+  print =<< parse "std/io.m"

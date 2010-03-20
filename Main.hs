@@ -9,6 +9,8 @@ import CppToken
 import CppLexer (lexCpp)
 import Parser
 
+none p = not . any p
+
 pUnit = Unit <$> many pImport <*> (pModule <|> pFunction)
 
 pModule = keyword "module" >> (Decl <$> pName) <* token Semicolon <*> (ModuleDef <$> many pFunction) <* eof
@@ -17,13 +19,25 @@ pImport = keyword "import" >> pName <* token Semicolon
 pSimpleName = StringName <$> identifier
 pName = QualifiedName <$> sepBy1 identifier (token DoubleColon)
 
-pFunction = (\ret nm params code -> Decl nm (FunctionDef ret params code)) <$>
-  pType <*> pName <*> pFormalParamList <*> pCompoundStatement
+pFunction = choice
+  [(\ret nm params code -> Decl nm (FunctionDef ret params code)) <$>
+    pType <*> pName <*> pFormalParamList <*> pCompoundStatement
+  ,keyword "extern" *> (
+    (\linkage ret nm params -> Decl nm (ExternalFunction linkage ret params))
+      <$> optional string <*> pType <*> pName <*> pFormalParamList
+      <* token Semicolon)
+  ]
 
-pFormalParamList = inParens (listOf pFormalParam)
+pFormalParamList = do
+  xs <- inParens . listOf . choice $ [pFormalParam, pVarargParam]
+  guardMsg (validateFormalParams xs) "Invalid formal parameter list - vararg ellipsis must be last parameter."
+  return xs
 pCompoundStatement = inBraces (many pStatement)
 
 pFormalParam = FormalParam <$> pType <*> optional pSimpleName
+pVarargParam = token Ellipsis >> return VarargParam
+validateFormalParams (x:xs) = none (== VarargParam) (init xs)
+validateFormalParams [] = True
 
 infixl 3 $>
 ($>) = flip (<$)

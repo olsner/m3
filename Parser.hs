@@ -14,7 +14,9 @@ module Parser
   sepBy,
   sepBy1,
   match,
-  choice)
+  choice,
+  guardMsg,
+  guardM)
   where
 
 import Control.Applicative

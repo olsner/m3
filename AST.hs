@@ -20,12 +20,16 @@ type CompoundStatement = [Statement]
 data Decl = Decl Name Def deriving (Show,Eq)
 
 data VariableDecl = VarDecl Name Type deriving (Show,Eq)
-data FormalParam = FormalParam Type (Maybe Name) deriving (Show,Eq)
+data FormalParam =
+    FormalParam Type (Maybe Name)
+  | VarargParam
+  deriving (Show,Eq)
 type FormalParams = [FormalParam]
 
 data Def =
     ModuleDef [Decl]
   | FunctionDef { funReturnType :: Type, funArgs :: FormalParams, funCode :: CompoundStatement }
+  | ExternalFunction { funLinkage :: Maybe String, funReturnType :: Type, funArgs :: FormalParams }
 
   deriving (Show,Eq)
 

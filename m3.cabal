@@ -1,0 +1,39 @@
+Name:                m3
+
+-- The package version. See the Haskell package versioning policy
+-- (http://www.haskell.org/haskellwiki/Package_versioning_policy) for
+-- standards guiding when and how versions should be incremented.
+Version:             0.1
+Synopsis:            A compiler for "M3" using the LLVM for code generation.
+
+-- A longer description of the package.
+-- Description:         
+Homepage:            http://olsner.github.com/m3/ -- Doesn't yet exist...
+License:             BSD3
+License-file:        LICENSE
+Author:              Simon Brenner
+Maintainer:          olsner@gmail.com
+
+Stability:           Experimental
+Category:            Language
+Build-type:          Simple
+
+-- Extra files to be distributed with the package, such as examples or
+-- a README.
+-- Extra-source-files:  
+
+Cabal-version:       >=1.2
+
+Executable m3
+  -- .hs or .lhs file containing the Main module.
+  Main-is:           Main.hs
+  
+  -- Packages needed in order to build this package.
+  Build-depends: base < 5, llvm, parsec, mtl
+  
+  -- Modules not exported by this package.
+  -- Other-modules:       
+  
+  -- Extra tools (e.g. alex, hsc2hs, ...) needed to build the source.
+  -- Build-tools:         
+  

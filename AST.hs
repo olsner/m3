@@ -1,8 +1,15 @@
 module AST where
 
+import Data.List (intercalate)
 import CppToken (Tok)
 
 data Name = StringName String | QualifiedName [String] deriving (Show,Eq,Ord)
+qualifyName q n = QualifiedName (f q ++ f n)
+  where
+	f (StringName s) = [s]
+	f (QualifiedName q) = q
+encodeName (StringName s) = s
+encodeName (QualifiedName ss) = intercalate "__" ss
 
 -- A unit is a set of imports and *one* declaration of the toplevel entity.
 data Unit = Unit { unitImports :: [Name], unitDecl :: Decl } deriving (Show,Eq)

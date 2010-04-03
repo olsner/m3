@@ -8,6 +8,7 @@ import AST
 import CppToken
 import CppLexer (lexCpp)
 import Parser
+import CodeGen
 
 none p = not . any p
 
@@ -105,8 +106,10 @@ parse path = do
   --print res
   let Right tokens = res
   --mapM_ print (map snd tokens)
-  return (runParser pUnit (map snd tokens))
+  return (fst $ runParser pUnit (map snd tokens))
+
+process name ast = print ast >> printLLVM name ast
 
 main = do
-  print =<< parse "ex1.m"
-  print =<< parse "std/io.m"
+  process (QualifiedName ["ex1"]) =<< parse "ex1.m"
+  process (QualifiedName ["std","io"]) =<< parse "std/io.m"

@@ -64,7 +64,7 @@ data Expr e =
   | EAssignment Tok e e
   | EString String
   | EInt Integer
-  | EToRValue e -- ^ lvalue-to-rvalue conversion, inserted by type checking
+  | EDeref e -- ^ Doubles as lvalue-to-rvalue conversion, inserted by type checking. All variables are pointers, surprisingly
   | EArrToPtr e
   deriving (Show,Eq)
 

@@ -121,20 +121,24 @@ cgExpr typ e = case e of
   (EFunCall fun@(TypedE funType _) args) -> do
     (fun_:args_) <- mapM cgTypedE (fun:args)
     let funcall = "call "++fun_++"("++intercalate "," args_++")"++"\n"
-    let TFunction retT _ = funType
+    let TPtr (TFunction retT _) = funType
     if retT == TVoid
       then tell funcall >> return undefined -- The return value should be guaranteed unused!
       else withFresh retT $ \r -> tell (r ++ " = "++funcall)
   (EVarRef name) -> do
     let nm = encodeName name
     local <- isLocal nm
-    return (encodeType (TPtr typ)++(if local then " %" else " @")++nm)
+    return (encodeType typ++(if local then " %" else " @")++nm)
   (EArrToPtr (TypedE arrT@(TArray _ elem) arr)) -> do
-    v <- cgExpr arrT arr
+    v <- cgExpr (TPtr arrT) arr
     return (encodeType (TPtr elem)++" getelementptr ("++v++", i1 0, i1 0)")
+  (EDeref loc) -> withFresh typ $ \r -> do
+    loc <- cgTypedE loc
+    tell (r++" = load "++loc++"\n")
   (EAssignment assignType lval rval) -> do
+    let (TypedE typ (EDeref loc)) = lval
+    lv <- cgTypedE loc
     rv <- cgTypedE rval
-    lv <- cgTypedE lval
     tell ("store "++rv++", "++lv++"\n")
     return rv
   other -> tell ("; UNIMPL!!! "++show other++"\n") >> fresh
@@ -157,9 +161,10 @@ hasString s = M.member s <$> getStringMap
 stringReplacement str = do
     b <- hasString str
     i <- if b then get else new
+    let arrType = TArray (length str+1) TChar
     return $
       TypedE (TPtr TChar) $
-      EArrToPtr $ TypedE (TArray (length str+1) TChar) $
+      EArrToPtr $ TypedE arrType $
         EVarRef (QualifiedName [printf ".STR%d" i])
   where
     get :: SF Int

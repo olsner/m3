@@ -74,19 +74,20 @@ tcParams [] [] = return []
 tcExpr :: ExprF -> TC TypedE
 tcExpr e = case outF e of
   (EInt i) -> return (TypedE TInt (EInt i))
-  (EString str) -> return (TypedE (TPtr (TConst TChar)) (EString str)) -- TODO Array-to-pointer conversion
+  (EString str) -> return (TypedE (TPtr (TConst TChar)) (EString str))
   (EVarRef name) -> do
     typ <- getBinding name
-    return (TypedE typ (EVarRef name)) -- TODO Lookup name and give that type!
+    return (TypedE typ (EDeref (TypedE (TPtr typ) (EVarRef name))))
   (EFunCall fun args) -> do
-    fun_@(TypedE typ _) <- tcExpr fun
+    (TypedE typ fune) <- tcExpr fun
+    let fun_ = TypedE (TPtr typ) $ case fune of (EDeref (TypedE _ e)) -> e
     case typ of
       (TFunction retT params) -> do
         args_ <- tcParams params args
         return (TypedE retT (EFunCall fun_ args_))
       other -> error ("Function call on "++show other++" of non-function type "++show typ)
   (EAssignment op lval rval) -> do
-    lv@(TypedE lvT _) <- tcExpr lval
+    lv@(TypedE lvT (EDeref _)) <- tcExpr lval
     rv <- tcExprAsType lvT rval
     return (TypedE lvT (EAssignment op lv rv))
   other -> error ("tcExpr: Unknown expression "++show other)

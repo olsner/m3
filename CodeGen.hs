@@ -4,6 +4,8 @@ module CodeGen (printLLVM) where
 
 import Control.Applicative
 import Control.Monad(liftM, when)
+import Control.Monad.Identity
+import Control.Monad.State
 import Control.Monad.Writer
 
 import Data.Char
@@ -33,10 +35,25 @@ import AST
 import Counter
 import SetWriter
 
-type CGM a = CounterT Int (Writer String) a
+type Locals = Set String
+type CGMT m = CounterT Int (StateT Locals m)
+type CGM = CGMT (Writer String)
 
 fresh :: CGM String
 fresh = printf "%%%d" <$> getAndInc
+
+withLocal :: String -> CGM a -> CGM a
+withLocal str m = do
+  s <- get
+  modify (S.insert str)
+  r <- m
+  put s
+  return r
+isLocal :: String -> CGM Bool
+isLocal str = gets (S.member str)
+
+runCGM :: FormalParams -> CGM a -> Writer String a
+runCGM args = fmap fst . flip runStateT S.empty {- TODO Names from args... -} . runCounterT (length args+1)
 
 printLLVM :: Name -> Unit TypedE -> IO ()
 printLLVM name unit = writeFile (encodeName name ++ ".ll") . execWriter $ do
@@ -63,7 +80,7 @@ encodeFormal (FormalParam typ name) = encodeType typ
 
 cgDef name def = case def of
   (ModuleDef decls) -> mapM_ (cgDecl name) decls
-  (FunctionDef retT args code) -> runCounterT (length args+1) $ do
+  (FunctionDef retT args code) -> runCGM args $ do
     tell "define external "
     tell (encodeType retT ++ " ")
     tell ("@"++encodeName name ++ " ")
@@ -87,6 +104,10 @@ cgStmt stmt = case stmt of
   (ReturnStmt e) -> tell . printf "ret %s\n" =<< cgTypedE e
   (ReturnStmtVoid) -> tell "ret void\n"
   (ExprStmt expr) -> cgTypedE expr >> return ()
+  CompoundStmt xs -> mapM_ cgStmt xs
+  (VarDecl name typ stmt) -> withLocal (encodeName name) $ do
+    tell ("%"++encodeName name++" = alloca "++encodeType typ++"\n")
+    cgStmt stmt
   other -> tell ("; UNIMPL!!! "++show other++"\n")
 
 withFresh typ m = fresh >>= \r -> m r >> return (encodeType typ ++ " " ++ r)
@@ -104,7 +125,10 @@ cgExpr typ e = case e of
     if retT == TVoid
       then tell funcall >> return undefined -- The return value should be guaranteed unused!
       else withFresh retT $ \r -> tell (r ++ " = "++funcall)
-  (EVarRef name) -> return (encodeType (TPtr typ)++" @"++encodeName name)
+  (EVarRef name) -> do
+    let nm = encodeName name
+    local <- isLocal nm
+    return (encodeType (TPtr typ)++(if local then " %" else " @")++nm)
   (EArrToPtr (TypedE arrT@(TArray _ elem) arr)) -> do
     v <- cgExpr arrT arr
     return (encodeType (TPtr elem)++" getelementptr ("++v++", i1 0, i1 0)")
@@ -154,7 +178,9 @@ getStringsDef (FunctionDef retT args code) = FunctionDef retT args <$> mapM getS
 getStringsDef def = return def
 getStringsStmt (ReturnStmt e) = ReturnStmt <$> getStringsTypedE e
 getStringsStmt (ExprStmt e) = ExprStmt <$> getStringsTypedE e
-getStringsStmt s = return s
+getStringsStmt (VarDecl n t s) = VarDecl n t <$> getStringsStmt s
+getStringsStmt (CompoundStmt ss) = CompoundStmt <$> mapM getStringsStmt ss
+getStringsStmt s = error (show s)
 
 getStringsTypedE (TypedE _ (EString str)) = stringReplacement str
 getStringsTypedE (TypedE t e) = TypedE t <$> getStringsExpr e

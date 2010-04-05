@@ -26,6 +26,9 @@ instance (MonadWriter w m) => MonadWriter w (CounterT s m) where
   tell = lift . tell
   listen m = CounterT (listen (unCounterT m))
   pass m = CounterT (pass (unCounterT m))
+instance (MonadState s m) => MonadState s (CounterT c m) where
+  get = lift get
+  put = lift . put
 
 runCounterT :: Monad m => s -> CounterT s m a -> m a
 runCounterT s m = liftM fst (runStateT (unCounterT m) s)

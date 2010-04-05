@@ -59,7 +59,9 @@ pStatement = choice $
   ,keyword "return" >> token Semicolon >> return ReturnStmtVoid
   ,keyword "return" *> (ReturnStmt <$> pExpression) <* token Semicolon
   ,ExprStmt <$> pExpression >>= \t -> t `seq` token Semicolon >> return t
-  --,CompoundStmt <$> inBraces (many pStatement)
+  -- TODO Implement declarations of multiple variables in one statement
+  ,flip VarDecl <$> pType <*> pName <*> (token Semicolon >> CompoundStmt <$> many pStatement <* lookToken CloseBrace)
+  ,CompoundStmt <$> inBraces (many pStatement)
   ]
 
 pExpression = pLeftExpression <**> pExpressionSuffix

@@ -20,14 +20,14 @@ data Show e => Statement e =
   | ReturnStmt e
   | ReturnStmtVoid
   | ExprStmt e
-  
+  | VarDecl Name Type (Statement e)
+  | CompoundStmt [Statement e]
   deriving (Show,Eq)
 
 type CompoundStatement e = [Statement e]
 
 data Decl e = Decl Name (Def e) deriving (Show,Eq)
 
-data VariableDecl = VarDecl Name Type deriving (Show,Eq)
 data FormalParam =
     FormalParam Type (Maybe Name)
   | VarargParam

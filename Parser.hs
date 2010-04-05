@@ -16,7 +16,10 @@ module Parser
   match,
   choice,
   guardMsg,
-  guardM)
+  guardM,
+  lookToken,
+  satisfyLook,
+  lookNext)
   where
 
 import Control.Applicative
@@ -79,10 +82,17 @@ next = P f
     f [] = (Left "Ran out of input (EOF)", [])
     f (t:ts) = (Right t, ts)
 
+lookNext = P f
+  where
+    f [] = (Left "Ran out of input (EOF)", [])
+    f ts@(t:_) = (Right t, ts)
+
 {-# INLINE satisfy #-}
-satisfy p = next >>= \x -> guardMsg (p x) "Parse.satisfy: failed" >> return x
+satisfy p = next >>= \x -> guardMsg (p x) "Parser.satisfy: failed" >> return x
+satisfyLook p = lookNext >>= \x -> guardMsg (p x) "Parser.satisfyLook: failed" >> return x
 
 token t = satisfy (== t)
+lookToken t = satisfyLook (== t)
 
 eof = P $ \ts -> (if null ts then Right () else Left "Expected end-of-file", ts)
 

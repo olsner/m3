@@ -120,5 +120,6 @@ process name ast = do
   printLLVM name ast'
 
 main = do
-  process (QualifiedName ["ex1"]) =<< parse "ex1.m"
-  process (QualifiedName ["std","io"]) =<< parse "std/io.m"
+  process (QualifiedName ["ex1"]) =<< parse "tests/ex1.m"
+  process (QualifiedName ["ex2"]) =<< parse "tests/ex2.m"
+  process (QualifiedName ["std","io"]) =<< parse "tests/std/io.m"

@@ -115,7 +115,7 @@ withFresh typ m = fresh >>= \r -> m r >> return (encodeType typ ++ " " ++ r)
 cgArgs = zipWith (\(TypedE typ _) v -> encodeType typ++" "++v)
 
 cgTypedE (TypedE t e) = cgExpr t e
--- TODO cgExpr :: Expr -> CGM RegName -- make it return the name of where the result was stored. Also somehow memoize the result so that Expr's with sharing have the same sharing - may require clever changes to Expr.
+-- TODO Somehow memoize the result so that Expr's with sharing have the same sharing - may require clever changes to Expr.
 cgExpr typ e = case e of
   (EInt i) -> return ("i32 "++show i)
   (EFunCall fun@(TypedE funType _) args) -> do

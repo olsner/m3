@@ -32,6 +32,11 @@ next = satisfy (const True)
 match xs = try (match' xs)
 match' [] = return []
 match' (x:xs) = liftM2 (:) (satisfy (== x)) (match' xs)
+
+instance Applicative (GenParser t s) where
+  (<*>) = ap
+  pure = return
+
 #else
 type Lexer a = Parser Char a
 oneOf = choice . map char

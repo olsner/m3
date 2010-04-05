@@ -16,6 +16,9 @@ type Counter s = CounterT s Identity
 instance Monad m => Applicative (StateT s m) where
   pure = return
   (<*>) = ap
+instance Monad m => Applicative (CounterT s m) where
+  pure = return
+  (<*>) = ap
 
 --instance MonadReader r m => MonadReader r (CounterT s m) where
 --instance MonadIO m => MonadIO (CounterT s m) where

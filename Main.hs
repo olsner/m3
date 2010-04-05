@@ -1,6 +1,7 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 
 import Control.Applicative
+import Control.Functor.Fix
 
 import Data.Maybe
 
@@ -9,6 +10,7 @@ import CppToken
 import CppLexer (lexCpp)
 import Parser
 import CodeGen
+import TypeCheck (typecheck)
 
 none p = not . any p
 
@@ -64,24 +66,26 @@ pExpression = pLeftExpression <**> pExpressionSuffix
 
 pLeftExpression = choice
   [inParens pExpression
-  ,EVarRef <$> pName
-  ,EString <$> string
-  ,EInt <$> integer
+  ,InF . EVarRef <$> pName
+  ,InF . EString <$> string
+  ,InF . EInt <$> integer
   ]
 
 pAssignmentOperator = token Assignment -- TODO Also handle operator-assignments, once lexer and token definitions have it.
 
-pExpressionSuffix :: Parser Tok (Expr -> Expr)
+eAssignment a b c = InF (EAssignment a b c)
+
+pExpressionSuffix :: Parser Tok (ExprF -> ExprF)
 pExpressionSuffix = choice
-  [flip <$> (EAssignment <$> pAssignmentOperator) <*> pExpression
-  ,flip EFunCall <$> inParens (listOf pExpression)
+  [flip <$> (eAssignment <$> pAssignmentOperator) <*> pExpression
+  ,(InF .) <$> flip EFunCall <$> inParens (listOf pExpression)
   ,return id
   ]
 
 keyword str = token (Identifier str) <|> token (Reserved str)
 parseJust f = fromJust . f <$> satisfy (isJust . f)
 identifier = parseJust fromIdentifier
-integer = parseJust fromIntegerTok
+integer = fromIntegral <$> parseJust fromIntegerTok
 string = parseJust fromStringTok
 
 fromIdentifier (Identifier s) = Just s
@@ -108,7 +112,12 @@ parse path = do
   --mapM_ print (map snd tokens)
   return (fst $ runParser pUnit (map snd tokens))
 
-process name ast = print ast >> printLLVM name ast
+process :: Name -> Unit ExprF -> IO ()
+process name ast = do
+  print ast
+  let ast' = typecheck name ast
+  print ast'
+  printLLVM name ast'
 
 main = do
   process (QualifiedName ["ex1"]) =<< parse "ex1.m"

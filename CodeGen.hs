@@ -135,7 +135,7 @@ cgExpr typ e = case e of
   (EAssignment assignType lval rval) -> do
     rv <- cgTypedE rval
     lv <- cgTypedE lval
-    tell ("store "++lv++", "++rv++"\n")
+    tell ("store "++rv++", "++lv++"\n")
     return rv
   other -> tell ("; UNIMPL!!! "++show other++"\n") >> fresh
 

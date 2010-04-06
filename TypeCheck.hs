@@ -11,24 +11,26 @@ import qualified Data.Map as M
 
 import AST
 
-type TC a = State (Map Name Type) a
+data Binding = Var { varType :: Type } | Alias { varAliasName :: Name }
+type TC a = State (Map Name Binding) a
 
 -- HACK to work around missing module import system...
 -- HACK also to work around missing name resolution that can add qualifications
-preregistered = [(QualifiedName [{-"std","io",-}"printf"], TFunction TVoid [FormalParam (TPtr (TConst TChar)) Nothing, VarargParam])]
-preregisteredDecls = map (\(name,typ) -> Decl name (mkDef typ)) preregistered
+-- TODO Make printf an alias for std::io::printf
+preregistered = [(QualifiedName [{-"std","io",-}"printf"], Var (TFunction TVoid [FormalParam (TPtr (TConst TChar)) Nothing, VarargParam]))]
+preregisteredDecls = map (\(name,Var typ) -> Decl name (mkDef typ)) preregistered
   where
     mkDef (TFunction ret args) = ExternalFunction Nothing ret args
 
 runTC = flip runState (M.fromList preregistered)
 
-addBinding name typ = modify (M.insert name typ)
-getBinding name = fromJust . M.lookup name <$> get
+addBinding name typ = modify (M.insert name (Var typ))
+getBinding name = varType . fromJust . M.lookup name <$> get
 
 inScope :: Name -> Type -> TC a -> TC a
 inScope name typ m = do
   s <- get
-  put (M.insert name typ s)
+  put (M.insert name (Var typ) s)
   r <- m
   put s
   return r

@@ -55,8 +55,8 @@ isLocal str = gets (S.member str)
 runCGM :: FormalParams -> CGM a -> Writer String a
 runCGM args = fmap fst . flip runStateT S.empty {- TODO Names from args... -} . runCounterT (length args+1)
 
-printLLVM :: Name -> Unit TypedE -> IO ()
-printLLVM name unit = writeFile (encodeName name ++ ".ll") . execWriter $ do
+printLLVM :: (MonadIO m) => Name -> Unit TypedE -> m ()
+printLLVM name unit = liftIO . writeFile (encodeName name ++ ".ll") . execWriter $ do
   let (unit', stringMap) = runStringFinder $ getStrings unit
   writeStrings stringMap
   cgDecl name (unitDecl unit')

@@ -1,7 +1,10 @@
+{-# LANGUAGE RankNTypes,FlexibleContexts #-}
+
 module TypeCheck where
 
 import Control.Applicative
 import Control.Monad.Identity
+import Control.Monad.Reader
 import Control.Monad.State
 import Control.Functor.Fix
 
@@ -12,7 +15,7 @@ import qualified Data.Map as M
 import AST
 
 data Binding = Var { varType :: Type } | Alias { varAliasName :: Name }
-type TC a = State (Map Name Binding) a
+type TC a = forall m . Monad m => StateT (Map Name Binding) m a
 
 std_io_printf = QualifiedName ["std","io","printf"]
 -- HACK to work around missing module import system...
@@ -23,7 +26,7 @@ preregisteredDecls = concatMap (\(name,bind) -> Decl name <$> mkDef bind) prereg
     mkDef (Var (TFunction ret args)) = [ExternalFunction Nothing ret args]
     mkDef (Alias _) = []
 
-runTC = flip runState (M.fromList preregistered)
+runTC = flip runStateT (M.fromList preregistered)
 
 addBinding name typ = modify (M.insert name (Var typ))
 getBindingType :: Name -> TC Type
@@ -43,8 +46,10 @@ inScope name typ m = do
   put s
   return r
 
-typecheck :: Name -> Unit ExprF -> Unit TypedE
-typecheck name (Unit imports decl) = Unit imports $ fst $ runTC $ tcDecl name decl
+type ModMap = Map Name (Unit ExprF)
+
+typecheck :: (Functor m, Monad m, MonadReader ModMap m) => Name -> Unit ExprF -> m (Unit TypedE)
+typecheck name (Unit imports decl) = Unit imports . fst <$> runTC (tcDecl name decl)
 
 tcDecl :: Name -> Decl ExprF -> TC (Decl TypedE)
 tcDecl name (Decl local def) =

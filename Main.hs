@@ -2,8 +2,18 @@
 
 import Control.Applicative
 import Control.Functor.Fix
+import Control.Monad.Reader
+import Control.Monad.State
 
 import Data.Maybe
+
+import Data.Map (Map)
+import qualified Data.Map as M
+
+import System.FilePath
+import System.Directory
+
+import Text.Printf
 
 import AST
 import CppToken
@@ -114,14 +124,50 @@ parse path = do
   --mapM_ print (map snd tokens)
   return (fst $ runParser pUnit (map snd tokens))
 
-process :: Name -> Unit ExprF -> IO ()
+process :: Name -> Unit ExprF -> ReaderT ModMap IO (Unit TypedE)
 process name ast = do
-  print ast
-  let ast' = typecheck name ast
-  print ast'
+  liftIO (print ast)
+  ast' <- typecheck name ast
+  liftIO (print ast')
   printLLVM name ast'
+  return ast'
 
-main = do
-  process (QualifiedName ["ex1"]) =<< parse "tests/ex1.m"
-  process (QualifiedName ["ex2"]) =<< parse "tests/ex2.m"
-  process (QualifiedName ["std","io"]) =<< parse "tests/std/io.m"
+firstM :: Monad m => (a -> m (Maybe b)) -> [a] -> m b
+firstM f (x:xs) = do
+  fx <- f x
+  case fx of
+    Just x -> return x
+    Nothing -> firstM f xs
+firstM f [] = fail "Failed"
+
+nameToPath (QualifiedName components) = joinPath components
+
+maybeImportModule name path = do
+  let modPath = addExtension (path </> nameToPath name) ".m"
+  printf "Load %s: Trying %s\n" (show name) modPath
+  e <- doesFileExist modPath
+  if e then Just <$> parse modPath else return Nothing
+
+includePath = ["tests"]
+
+type ModMap = Map Name (Unit ExprF)
+type ModT = StateT ModMap
+type Mod = ModT IO
+
+runMod = flip runStateT
+
+ifNotLoaded name m = gets (M.lookup name) >>= \res -> case res of
+  Just mod -> return mod
+  Nothing -> m >>= \mod -> modify (M.insert name mod) >> return mod
+
+processImport :: Name -> Mod (Unit ExprF)
+processImport name = ifNotLoaded name $ do
+  unit <- liftIO $ firstM (maybeImportModule name) includePath
+  mapM_ processImport (unitImports unit)
+  return unit
+
+main = doMain (QualifiedName ["ex2"])
+
+doMain name = do
+  (mod,mods) <- runMod M.empty (processImport name)
+  runReaderT (process name mod) mods

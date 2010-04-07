@@ -1,4 +1,4 @@
-import std::io::printf;
+import std::io;
 
 module Main;
 

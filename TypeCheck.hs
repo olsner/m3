@@ -14,18 +14,26 @@ import AST
 data Binding = Var { varType :: Type } | Alias { varAliasName :: Name }
 type TC a = State (Map Name Binding) a
 
+std_io_printf = QualifiedName ["std","io","printf"]
 -- HACK to work around missing module import system...
 -- HACK also to work around missing name resolution that can add qualifications
--- TODO Make printf an alias for std::io::printf
-preregistered = [(QualifiedName [{-"std","io",-}"printf"], Var (TFunction TVoid [FormalParam (TPtr (TConst TChar)) Nothing, VarargParam]))]
-preregisteredDecls = map (\(name,Var typ) -> Decl name (mkDef typ)) preregistered
+preregistered = [(std_io_printf, Var (TFunction TVoid [FormalParam (TPtr (TConst TChar)) Nothing, VarargParam])), (QualifiedName["printf"], Alias std_io_printf)]
+preregisteredDecls = concatMap (\(name,bind) -> Decl name <$> mkDef bind) preregistered
   where
-    mkDef (TFunction ret args) = ExternalFunction Nothing ret args
+    mkDef (Var (TFunction ret args)) = [ExternalFunction Nothing ret args]
+    mkDef (Alias _) = []
 
 runTC = flip runState (M.fromList preregistered)
 
 addBinding name typ = modify (M.insert name (Var typ))
-getBinding name = varType . fromJust . M.lookup name <$> get
+getBindingType :: Name -> TC Type
+getBindingType name = do
+  bind <- getBinding name
+  case bind of
+    (Var typ) -> return typ
+    (Alias name) -> getBindingType name
+getBinding :: Name -> TC Binding
+getBinding name = fromJust . M.lookup name <$> get
 
 inScope :: Name -> Type -> TC a -> TC a
 inScope name typ m = do
@@ -78,8 +86,12 @@ tcExpr e = case outF e of
   (EInt i) -> return (TypedE TInt (EInt i))
   (EString str) -> return (TypedE (TPtr (TConst TChar)) (EString str))
   (EVarRef name) -> do
-    typ <- getBinding name
-    return (TypedE typ (EDeref (TypedE (TPtr typ) (EVarRef name))))
+    typ <- getBindingType name
+    bind <- getBinding name
+    return $ TypedE typ $ EDeref $ TypedE (TPtr typ) $ EVarRef $
+      case bind of
+        (Var typ) -> name
+        (Alias name) -> name
   (EFunCall fun args) -> do
     (TypedE typ fune) <- tcExpr fun
     let fun_ = TypedE (TPtr typ) $ case fune of (EDeref (TypedE _ e)) -> e

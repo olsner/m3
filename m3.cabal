@@ -29,7 +29,13 @@ Executable m3
   Main-is:           Main.hs
   
   -- Packages needed in order to build this package.
-  Build-depends: base < 5, llvm, parsec, mtl, containers, category-extras
+  Build-depends: base < 5,
+    parsec,
+    mtl,
+    containers,
+    -- Only for FixF - that's exactly one newtype we need...
+    category-extras,
+    directory, filepath
   
   -- Modules not exported by this package.
   -- Other-modules:       

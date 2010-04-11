@@ -65,13 +65,32 @@ stringfindUnits map = runStringFinder (mapMapM getStrings map)
 printLLVM :: (MonadIO m, MonadReader (Map Name (Unit TypedE)) m) => Name -> m ()
 printLLVM name = do
   output <- execWriterT $ do
+    origUnits <- ask
     (units, stringMap) <- asks stringfindUnits
     local (const units) $ do
-      liftIO . print =<< ask
       Just unit <- asks (M.lookup name)
+      liftIO (printf "Generating code for %s...\n" (show name))
       writeStrings stringMap
-      cgDecl name (unitDecl unit)
+      mapM_ (cgUnit . fromJust . flip M.lookup units) (importedUnits units name)
+      cgMain name
   liftIO (writeFile (encodeName name ++ ".ll") output)
+
+mainArgs = [FormalParam TInt Nothing, FormalParam (TPtr (TConst (TPtr (TConst TChar)))) Nothing]
+mainType = TFunction TInt mainArgs
+--cgMain mainModule = tell ("@main = alias "++encodeType (TPtr mainType)++" @"++encodeName (qualifyName mainModule (QualifiedName ["main"]))++"\n")
+cgMain mainModule = tell $
+    "define external i32 @main(i32, i8**) {\n"++
+    printf "\t%%ret = tail call i32(i32,i8**)* @%s (i32 %%0,i8** %%1)\n" (encodeName actualMain)++
+    "\tret i32 %ret\n"++
+    "}\n"
+  where
+    mainName = QualifiedName ["main"]
+    actualMain = qualifyName mainModule mainName
+
+cgUnit (Unit _ decl@(Decl name _)) = do
+  tell ("; Start of unit: "++show name++"\n\n")
+  cgDecl (QualifiedName []) decl
+  tell ("; End of unit: "++show name++"\n\n")
 
 cgDecl name (Decl local def) =
   cgDef (qualifyName name local) local def

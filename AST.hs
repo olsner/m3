@@ -2,9 +2,18 @@
 
 module AST where
 
-import Data.List (intercalate)
-import CppToken (Tok)
 import Control.Functor.Fix
+import Control.Monad.RWS
+
+import Data.List (intercalate)
+import Data.Maybe (fromJust)
+
+import Data.Map (Map)
+import qualified Data.Map as M
+import Data.Set (Set)
+import qualified Data.Set as S
+
+import CppToken (Tok)
 
 newtype Name = QualifiedName [String] deriving (Show,Eq,Ord)
 qualifyName (QualifiedName xs) (QualifiedName ys) = QualifiedName (xs++ys)
@@ -12,6 +21,16 @@ encodeName (QualifiedName xs) = intercalate "__" xs
 
 -- A unit is a set of imports and *one* declaration of the toplevel entity.
 data Unit e = Unit { unitImports :: [Name], unitDecl :: Decl e } deriving (Show,Eq)
+importedUnits :: Map Name (Unit e) -> Name -> [Name]
+importedUnits units name = snd $ execRWS (go name) units S.empty
+  where
+    go :: Name -> RWS (Map Name (Unit e)) [Name] (Set Name) ()
+    go name = gets (S.member name) >>= \member -> when (not member) (add name)
+    add name = do
+      modify (S.insert name)
+      imps <- asks (unitImports . fromJust . M.lookup name)
+      mapM go imps
+      tell [name]
 
 data Show e => Statement e =
     EmptyStmt

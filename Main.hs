@@ -13,6 +13,7 @@ import qualified Data.Map as M
 
 import System.Directory
 import System.FilePath
+import System.Environment
 import System.Exit
 
 import Text.ParserCombinators.Parsec.Pos
@@ -139,13 +140,13 @@ process name mods = do
   mods' <- runReaderT (typecheck name) mods
   runReaderT (printLLVM name) mods'
 
-firstM :: Monad m => (a -> m (Maybe b)) -> [a] -> m b
+firstM :: Monad m => (a -> m (Maybe b)) -> [a] -> m (Maybe b)
 firstM f (x:xs) = do
   fx <- f x
   case fx of
-    Just x -> return x
+    Just x -> return (Just x)
     Nothing -> firstM f xs
-firstM f [] = fail "Failed"
+firstM f [] = return Nothing
 
 nameToPath (QualifiedName components) = joinPath components
 
@@ -169,12 +170,19 @@ ifNotLoaded name m = gets (M.lookup name) >>= \res -> case res of
 
 processImport :: Name -> Mod (Unit ExprF)
 processImport name = ifNotLoaded name $ do
-  unit <- liftIO $ firstM (tryImportModule name) includePath
-  mapM_ processImport (unitImports unit)
-  return unit
+  res <- liftIO $ firstM (tryImportModule name) includePath
+  case res of
+    Just unit -> do
+      mapM_ processImport (unitImports unit)
+      return unit
+    Nothing -> error ("Error: Can't locate module "++show name)
+
+parseName name = case lexCpp "cmd-line" name of
+  Left err -> putStrLn "Error: Can't parse name:" >> print err >> exitFailure
+  Right tokens -> return (fst $ runParser pName tokens)
 
 -- TODO for each cmd-line arg, parse as ::-separated name and compile
-main = doMain (QualifiedName ["ex3"])
+main = mapM (doMain <=< parseName) =<< getArgs
 
 doMain name = do
   (mod,mods) <- runMod M.empty (processImport name)

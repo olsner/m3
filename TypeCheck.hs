@@ -1,6 +1,6 @@
-{-# LANGUAGE RankNTypes,FlexibleContexts #-}
+{-# LANGUAGE RankNTypes,FlexibleContexts,NoMonomorphismRestriction,TypeSynonymInstances #-}
 
-module TypeCheck where
+module TypeCheck (typecheck) where
 
 import Control.Applicative
 import Control.Monad.Identity
@@ -12,81 +12,120 @@ import Data.Maybe
 import Data.Map (Map)
 import qualified Data.Map as M
 
+import Text.Printf
+
 import AST
 
-data Binding = Var { varType :: Type } | Alias { varAliasName :: Name }
-type TC a = forall m . Monad m => StateT (Map Name Binding) m a
+data Binding = Var Type | Alias Name deriving (Show)
+type ModBinding = Either (Unit ExprF) (Unit TypedE)
+type ModMap = Map Name ModBinding
+data TCState = TCState { bindings :: Map Name Binding, modules :: ModMap }
+type TC = StateT TCState
 
-std_io_printf = QualifiedName ["std","io","printf"]
--- HACK to work around missing module import system...
--- HACK also to work around missing name resolution that can add qualifications
-preregistered = [(std_io_printf, Var (TFunction TVoid [FormalParam (TPtr (TConst TChar)) Nothing, VarargParam])), (QualifiedName["printf"], Alias std_io_printf)]
-preregisteredDecls = concatMap (\(name,bind) -> Decl name <$> mkDef bind) preregistered
-  where
-    mkDef (Var (TFunction ret args)) = [ExternalFunction Nothing ret args]
-    mkDef (Alias _) = []
+instance (Monad m) => Applicative (TC m) where
+  pure = return
+  (<*>) = ap
 
-runTC = flip runStateT (M.fromList preregistered)
+runTC m mods = runStateT m (TCState { bindings = M.empty, modules = mods })
 
-addBinding name typ = modify (M.insert name (Var typ))
-getBindingType :: Name -> TC Type
-getBindingType name = do
+modifyBindings f = modify (\s -> s { bindings = f (bindings s) })
+modifyModules f = modify (\s -> s { modules = f (modules s) })
+
+addBinding name bind = liftIO (printf "addBinding %s -> %s\n" (show name) (show bind)) >> modifyBindings (M.insert name bind) >> (liftIO . print =<< gets bindings)
+getBindingType name = traceM ("getBindingType "++show name) $ do
+  --liftIO . print =<< gets bindings
   bind <- getBinding name
   case bind of
     (Var typ) -> return typ
     (Alias name) -> getBindingType name
-getBinding :: Name -> TC Binding
-getBinding name = fromJust . M.lookup name <$> get
+getBinding name = fromJust . M.lookup name <$> gets bindings
 
-inScope :: Name -> Type -> TC a -> TC a
-inScope name typ m = do
-  s <- get
-  put (M.insert name (Var typ) s)
+getModule name = fromJust . M.lookup name <$> gets modules
+putModule name bind = modifyModules (M.insert name bind)
+
+inScope :: MonadIO m => Name -> Binding -> TC m a -> TC m a
+inScope name bind m = do
+  s <- gets bindings
+  addBinding name bind
   r <- m
-  put s
+  modifyBindings (const s)
   return r
 
-type ModMap = Map Name (Unit ExprF)
+typecheck :: (Functor m, MonadIO m, MonadReader (Map Name (Unit ExprF)) m) => Name -> m (Unit TypedE)
+typecheck name = do
+  mods <- asks (M.map Left)
+  fst <$> runTC (tcUnitByName name) mods
 
-typecheck :: (Functor m, Monad m, MonadReader ModMap m) => Name -> Unit ExprF -> m (Unit TypedE)
-typecheck name (Unit imports decl) = Unit imports . fst <$> runTC (tcDecl name decl)
+traceM :: MonadIO m => String -> m a -> m a
+--traceM str m = liftIO (putStrLn str) >> m <* liftIO (putStr (str++": done\n"))
+traceM = flip const
 
-tcDecl :: Name -> Decl ExprF -> TC (Decl TypedE)
-tcDecl name (Decl local def) =
+withUnitImported (Unit _ decl) = withDecl (QualifiedName []) decl
+withDecls name = flip (foldr (withDecl name))
+withDecl name decl@(Decl local def) = traceM ("withDecl "++show decl++" in "++show name) .
+  withDef (qualifyName name local) local def
+withDef name local def = traceM (printf "withDef %s local %s: %s" (show name) (show local) (show def)) . case def of
+  (ModuleDef decls) -> withDecls name decls
+  (FunctionDef retT args code) -> inScope name (Var (TFunction retT args)) . inScope local (Alias name)
+  (ExternalFunction linkage ret args) -> inScope name (Var (TFunction ret args)) . inScope local (Alias name)
+
+withImport name m = do
+  unit <- tcUnitByName name
+  traceM (printf "withImport %s" (show name)) (withUnitImported unit m)
+
+tcUnitByName :: MonadIO m => Name -> TC m (Unit TypedE)
+tcUnitByName name = do
+  mod <- getModule name -- errors if module not found - it must be found
+  liftIO (printf "tcUnitByName: %s -> %s\n" (show name) (show mod))
+  case mod of
+    Left untyped -> tcUnit name untyped
+    Right typed -> return typed
+
+putBlackhole name = putModule name (error "Recursive module inclusion")
+
+tcUnit :: MonadIO m => Name -> Unit ExprF -> TC m (Unit TypedE)
+tcUnit name (Unit imports decl) = traceM ("tcUnit "++show name) $ do
+  putBlackhole name
+  unit <- Unit imports <$> foldr withImport (tcDecl name decl) imports
+  putModule name (Right unit)
+  return unit
+
+tcDecl :: MonadIO m => Name -> Decl ExprF -> TC m (Decl TypedE)
+tcDecl name decl@(Decl local def) = traceM (printf "tcDecl %s %s %s" (show name)(show local) (show decl)) $
   Decl local <$> tcDef (qualifyName name local) def
 
-tcDef :: Name -> Def ExprF -> TC (Def TypedE)
-tcDef name def = case def of
-  (ModuleDef decls) -> ModuleDef <$> mapM (tcDecl name) (preregisteredDecls++decls)
+tcDef :: MonadIO m => Name -> Def ExprF -> TC m (Def TypedE)
+tcDef name def = traceM ("tcDef "++show name++": "++show def) $ case def of
+  (ModuleDef decls) -> ModuleDef <$> mapM (tcDecl name) (decls)
   (FunctionDef retT args code) -> do
-    addBinding name (TFunction retT args)
+    addBinding name (Var (TFunction retT args))
     FunctionDef retT args <$> mapM (tcStmt retT args) code
   (ExternalFunction linkage ret args) -> do
-    addBinding name (TFunction ret args)
-    return (ExternalFunction linkage ret args) -- TODO Extend name-to-type map with type information
+    addBinding name (Var (TFunction ret args))
+    return (ExternalFunction linkage ret args)
 
-tcStmt :: Type -> [FormalParam] -> Statement ExprF -> TC (Statement TypedE)
-tcStmt ret args stmt = case stmt of
+tcStmt :: MonadIO m => Type -> [FormalParam] -> Statement ExprF -> TC m (Statement TypedE)
+tcStmt ret args stmt = traceM ("tcStmt "++show stmt) $ case stmt of
   (ReturnStmt e) -> ReturnStmt <$> tcExprAsType ret e
   (ExprStmt e) -> ExprStmt <$> tcExpr e
   ReturnStmtVoid -> return ReturnStmtVoid
   EmptyStmt -> return EmptyStmt
   CompoundStmt [stmt] -> tcStmt ret args stmt
   CompoundStmt xs -> CompoundStmt <$> mapM (tcStmt ret args) xs
-  VarDecl name typ stmt -> VarDecl name typ <$> inScope name typ (tcStmt ret args stmt)
+  VarDecl name typ stmt -> VarDecl name typ <$> inScope name (Var typ) (tcStmt ret args stmt)
 
-tcExprAsType :: Type -> ExprF -> TC TypedE
+tcExprAsType :: MonadIO m => Type -> ExprF -> TC m TypedE
 tcExprAsType expT e = do
   e@(TypedE t _) <- tcExpr e
   if not (t == expT) then error ("Expression "++show e++" not of expected type "++show expT++" but "++show t) else return e
 
-tcParams :: [FormalParam] -> [ExprF] -> TC [TypedE]
+tcParams :: MonadIO m => [FormalParam] -> [ExprF] -> TC m [TypedE]
 tcParams (FormalParam typ _:ps) (x:xs) = liftM2 (:) (tcExprAsType typ x) (tcParams ps xs)
 tcParams [VarargParam] xs = mapM tcExpr xs
 tcParams [] [] = return []
 -- missing cases represent various errors...
 
-tcExpr :: ExprF -> TC TypedE
+tcExpr :: MonadIO m => ExprF -> TC m TypedE
 tcExpr e = case outF e of
   (EInt i) -> return (TypedE TInt (EInt i))
   (EString str) -> return (TypedE (TPtr (TConst TChar)) (EString str))

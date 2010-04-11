@@ -127,7 +127,7 @@ parse path = do
 process :: Name -> Unit ExprF -> ReaderT ModMap IO (Unit TypedE)
 process name ast = do
   liftIO (print ast)
-  ast' <- typecheck name ast
+  ast' <- typecheck name
   liftIO (print ast')
   printLLVM name ast'
   return ast'

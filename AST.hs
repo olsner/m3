@@ -62,13 +62,13 @@ data Def e =
 data Type =
     TVoid
   | TInt
-  | TSizedInt Int -- i8 => TSizedInt 8, etc
+-- Should probably be revived and used to replace TInt, TChar, TBool by the same type. Or just deleted.
+--  | TSizedInt Int -- i8 => TSizedInt 8, etc
   | TChar
   | TConst Type
   | TPtr Type
   | TArray Int Type
   | TFunction Type [FormalParam]
-  | TUnknown String -- delayed type error, or unchecked expression
   deriving (Show,Eq,Ord)
 
 data TypedE = TypedE Type (Expr TypedE) deriving (Show,Eq)

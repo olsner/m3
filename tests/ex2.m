@@ -7,7 +7,7 @@ int main(int argc, [const [const char]] argv)
 {
 	int test;
 	[const[const char]] ptr_const_ptr_const_char;
-	test = 7;
-	printf("Hello world: %d\n", test);
+	test = 42;
+	printf("Hello world: %d (%s)\n", test, "And another string argument");
 	return test;
 }

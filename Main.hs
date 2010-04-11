@@ -155,7 +155,7 @@ tryImportModule name path = do
   e <- doesFileExist modPath
   if e then Just <$> parse modPath else return Nothing
 
-includePath = ["tests"]
+includePath = ["stdlib", "tests"]
 
 type ModMap = Map Name (Unit ExprF)
 type ModT = StateT ModMap

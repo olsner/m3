@@ -97,7 +97,6 @@ encodeType TVoid = "void"
 encodeType (TConst t) = encodeType t
 encodeType (TFunction t params) = encodeType t++" ("++intercalate "," (map encodeFormal params)++")"
 encodeType (TArray len typ) = "["++show len++" x "++encodeType typ++"]"
-encodeType t = "i32 ; "++show t++"\n"
 
 encodeFormal VarargParam = "..."
 encodeFormal (FormalParam typ _) = encodeType typ
@@ -126,7 +125,6 @@ cgStmts code = mapM_ cgStmt code
 cgStmt :: Statement TypedE -> CGM ()
 cgStmt stmt = case stmt of
   EmptyStmt -> return ()
-  -- TODO Need to know the type of 'e'
   (ReturnStmt e) -> tell . printf "ret %s\n" =<< cgTypedE e
   (ReturnStmtVoid) -> tell "ret void\n"
   (ExprStmt expr) -> cgTypedE expr >> return ()
@@ -166,7 +164,7 @@ cgExpr typ e = case e of
     rv <- cgTypedE rval
     tell ("store "++rv++", "++lv++"\n")
     return rv
-  other -> tell ("; UNIMPL!!! "++show other++"\n") >> fresh
+  other -> error ("Unimplemented expression: "++show other)
 
 {-    EVarRef Name
   | EFunCall Expr [Expr]

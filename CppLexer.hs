@@ -134,9 +134,12 @@ stringLiteral = do
 	str <- many (escapedChar '\"')
 	char '\"'
 	return (StringTok str)
-escapedChar q = choice [char '\\' >> fmap unescape anychar, satisfy (/= q)]
--- FIXME this uses haskell's unescaping which might very well be different from C/C++'s
-unescape c = read ("\'\\" ++ c : "\'")
+escapedChar q = choice [char '\\' >> anychar >>= unescape, satisfy (/= q)]
+-- FIXME this uses haskell's unescaping which is different from C/C++'s
+unescape :: MonadPlus m => Char -> m Char
+unescape c = case c of
+  'n' -> return '\n'
+  _ -> fail ("Unrecognized escaped character: '\\"++[c]++"'")
 
 fromReadS :: ReadS a -> String -> a
 fromReadS f = fst . head . f

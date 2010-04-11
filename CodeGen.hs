@@ -113,11 +113,11 @@ cgDef name local def = case def of
     tell (intercalate "," (map encodeFormal args))
     tell ")"
     tell "{\n"
-    cgFunBody code -- TODO With environment! Must map M3 names to LLVM registers...
+    cgFunBody code
     tell "}\n\n"
   (ExternalFunction _linkage ret args) -> do
     tell ("declare "++encodeType ret++" @"++encodeName local++"("++intercalate "," (map encodeFormal args)++")\n")
-    tell ("@"++encodeName name++" = alias "++encodeType (TPtr (TFunction ret args))++" @"++encodeName local++"\n")
+    tell ("@"++encodeName name++" = alias linker_private "++encodeType (TPtr (TFunction ret args))++" @"++encodeName local++"\n")
 
 cgFunBody = cgStmts
 

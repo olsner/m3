@@ -1,10 +1,11 @@
-{-# LANGUAGE NoMonomorphismRestriction,ScopedTypeVariables,ExistentialQuantification,FlexibleContexts #-}
+{-# LANGUAGE NoMonomorphismRestriction,ScopedTypeVariables,ExistentialQuantification,FlexibleContexts,RankNTypes #-}
 
 module CodeGen (printLLVM) where
 
 import Control.Applicative
 import Control.Monad(liftM, when)
 import Control.Monad.Identity
+import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
 
@@ -36,8 +37,8 @@ import Counter
 import SetWriter
 
 type Locals = Set String
-type CGMT m = CounterT Int (StateT Locals m)
-type CGM = CGMT (Writer String)
+type CGMT m = CounterT Int (StateT Locals (WriterT String m))
+type CGM a = forall m . (MonadIO m) => CGMT m a
 
 fresh :: CGM String
 fresh = printf "%%%d" <$> getAndInc
@@ -52,14 +53,17 @@ withLocal str m = do
 isLocal :: String -> CGM Bool
 isLocal str = gets (S.member str)
 
-runCGM :: FormalParams -> CGM a -> Writer String a
+runCGM :: Monad m => FormalParams -> CGMT m a -> WriterT String m a
 runCGM args = fmap fst . flip runStateT S.empty {- TODO Names from args... -} . runCounterT (length args+1)
 
-printLLVM :: (MonadIO m) => Name -> Unit TypedE -> m ()
-printLLVM name unit = liftIO . writeFile (encodeName name ++ ".ll") . execWriter $ do
-  let (unit', stringMap) = runStringFinder $ getStrings unit
-  writeStrings stringMap
-  cgDecl name (unitDecl unit')
+printLLVM :: (MonadIO m, MonadReader (Map Name (Unit TypedE)) m) => Name -> m ()
+printLLVM name = do
+  output <- execWriterT $ do
+    Just unit <- asks (M.lookup name)
+    let (unit', stringMap) = runStringFinder $ getStrings unit
+    writeStrings stringMap
+    cgDecl name (unitDecl unit')
+  liftIO (writeFile (encodeName name ++ ".ll") output)
 
 cgDecl name (Decl local def) =
   cgDef (qualifyName name local) def

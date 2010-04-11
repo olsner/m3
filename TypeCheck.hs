@@ -51,10 +51,10 @@ inScope name bind m = do
   modifyBindings (const s)
   return r
 
-typecheck :: (Functor m, MonadIO m, MonadReader (Map Name (Unit ExprF)) m) => Name -> m (Unit TypedE)
+typecheck :: (Functor m, MonadIO m, MonadReader (Map Name (Unit ExprF)) m) => Name -> m (Map Name (Unit TypedE))
 typecheck name = do
   mods <- asks (M.map Left)
-  fst <$> runTC (tcUnitByName name) mods
+  snd . M.mapEither id . modules . snd <$> runTC (tcUnitByName name) mods
 
 traceM :: MonadIO m => String -> m a -> m a
 --traceM str m = liftIO (putStrLn str) >> m <* liftIO (putStr (str++": done\n"))

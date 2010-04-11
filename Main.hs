@@ -124,13 +124,13 @@ parse path = do
   --mapM_ print (map snd tokens)
   return (fst $ runParser pUnit (map snd tokens))
 
-process :: Name -> Unit ExprF -> ReaderT ModMap IO (Unit TypedE)
-process name ast = do
-  liftIO (print ast)
-  ast' <- typecheck name
-  liftIO (print ast')
-  printLLVM name ast'
-  return ast'
+process :: Name -> ModMap -> IO ()
+process name mods = do
+  let Just ast = M.lookup name mods
+  print ast
+  mods' <- runReaderT (typecheck name) mods
+  print (M.lookup name mods')
+  runReaderT (printLLVM name) mods'
 
 firstM :: Monad m => (a -> m (Maybe b)) -> [a] -> m b
 firstM f (x:xs) = do
@@ -171,4 +171,4 @@ main = doMain (QualifiedName ["ex2"])
 
 doMain name = do
   (mod,mods) <- runMod M.empty (processImport name)
-  runReaderT (process name mod) mods
+  process name mods

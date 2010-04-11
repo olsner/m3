@@ -6,11 +6,9 @@ import Data.List (intercalate)
 import CppToken (Tok)
 import Control.Functor.Fix
 
-data Name = StringName String | QualifiedName [String] deriving (Show,Eq,Ord)
-qualifyName _ q@(QualifiedName _) = q
-qualifyName (QualifiedName ps) (StringName s) = QualifiedName (ps ++ [s])
-encodeName (StringName s) = s
-encodeName (QualifiedName ss) = intercalate "__" ss
+newtype Name = QualifiedName [String] deriving (Show,Eq,Ord)
+qualifyName (QualifiedName xs) (QualifiedName ys) = QualifiedName (xs++ys)
+encodeName (QualifiedName xs) = intercalate "__" xs
 
 -- A unit is a set of imports and *one* declaration of the toplevel entity.
 data Unit e = Unit { unitImports :: [Name], unitDecl :: Decl e } deriving (Show,Eq)

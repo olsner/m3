@@ -29,7 +29,7 @@ pUnit = Unit <$> many pImport <*> (pModule <|> pFunction)
 pModule = keyword "module" >> (Decl <$> pName) <* token Semicolon <*> (ModuleDef <$> many pFunction) <* eof
 
 pImport = keyword "import" >> pName <* token Semicolon
-pSimpleName = StringName <$> identifier
+pSimpleName = (\nm -> QualifiedName [nm]) <$> identifier
 pName = QualifiedName <$> sepBy1 identifier (token DoubleColon)
 
 pFunction = choice

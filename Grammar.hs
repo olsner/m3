@@ -91,14 +91,13 @@ pExpressionSuffix = choice
   ,return id
   ]
 
-keyword str = token (Identifier str) <|> token (Reserved str)
+keyword str = token (Reserved str)
 parseJust f = second (fromJust . f) <$> satisfy (isJust . f . snd)
 identifier = parseJust fromIdentifier
 integer = second fromIntegral <$> parseJust fromIntegerTok
 string = parseJust fromStringTok
 
 fromIdentifier (Identifier s) = Just s
-fromIdentifier (Reserved s) = Just s
 fromIdentifier _ = Nothing
 
 fromIntegerTok (IntegerTok i) = Just i

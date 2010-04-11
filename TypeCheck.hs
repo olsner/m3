@@ -43,7 +43,7 @@ getBindingType name = traceM ("getBindingType "++show name) $ do
   case bind of
     (Var typ) -> return typ
     (Alias alias) -> getBindingType alias
-getBinding name = fromJust . M.lookup name <$> gets bindings
+getBinding name = fromMaybe (error ("getBinding "++show name++": Name not found")) . M.lookup name <$> gets bindings
 
 getModule name = fromJust . M.lookup name <$> gets modules
 putModule name bind = modifyModules (M.insert name bind)

@@ -48,9 +48,8 @@ type ParseError = String
 
 lexCpp :: String -> String -> Either ParseError [Token]
 #if USE_PARSEC
-lexCpp filename source = runParser file () "cmd-line" source
+lexCpp filename source = runParser file () filename source
 	where
-		--position = setSourceColumn (initialPos filename) 0
 		position = initialPos filename
 #else
 lexCpp filename source = Right $ fst $ runParser file source

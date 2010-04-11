@@ -136,17 +136,14 @@ parse path = do
 
 process :: Name -> ModMap -> IO ()
 process name mods = do
-  let Just ast = M.lookup name mods
   mods' <- runReaderT (typecheck name) mods
   runReaderT (printLLVM name) mods'
 
 firstM :: Monad m => (a -> m (Maybe b)) -> [a] -> m (Maybe b)
 firstM f (x:xs) = do
   fx <- f x
-  case fx of
-    Just x -> return (Just x)
-    Nothing -> firstM f xs
-firstM f [] = return Nothing
+  maybe (firstM f xs) (return . Just) fx
+firstM _ [] = return Nothing
 
 nameToPath (QualifiedName components) = joinPath components
 
@@ -162,11 +159,11 @@ type ModMap = Map Name (Unit ExprF)
 type ModT = StateT ModMap
 type Mod = ModT IO
 
-runMod = flip runStateT
+runMod = flip execStateT
 
 ifNotLoaded name m = gets (M.lookup name) >>= \res -> case res of
-  Just mod -> return mod
-  Nothing -> m >>= \mod -> mod <$ modify (M.insert name mod)
+  Just modul -> return modul
+  Nothing -> m >>= \modul -> modul <$ modify (M.insert name modul)
 
 processImport :: Name -> Mod (Unit ExprF)
 processImport name = ifNotLoaded name $ do
@@ -182,8 +179,8 @@ parseName name = case lexCpp "cmd-line" name of
   Right tokens -> return (fst $ runParser pName tokens)
 
 -- TODO for each cmd-line arg, parse as ::-separated name and compile
-main = mapM (doMain <=< parseName) =<< getArgs
+main = mapM_ (doMain <=< parseName) =<< getArgs
 
 doMain name = do
-  (mod,mods) <- runMod M.empty (processImport name)
+  mods <- runMod M.empty (processImport name)
   process name mods

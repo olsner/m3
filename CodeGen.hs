@@ -74,7 +74,7 @@ printLLVM name = do
   liftIO (writeFile (encodeName name ++ ".ll") output)
 
 cgDecl name (Decl local def) =
-  cgDef (qualifyName name local) def
+  cgDef (qualifyName name local) local def
 
 encodeType :: Type -> String
 encodeType (TPtr TVoid) = "i8*"
@@ -90,10 +90,10 @@ encodeType t = "i32 ; "++show t++"\n"
 encodeFormal VarargParam = "..."
 encodeFormal (FormalParam typ name) = encodeType typ
 
-cgDef name def = case def of
+cgDef name local def = case def of
   (ModuleDef decls) -> mapM_ (cgDecl name) decls
   (FunctionDef retT args code) -> runCGM args $ do
-    tell "define external "
+    tell "define linker_private "
     tell (encodeType retT ++ " ")
     tell ("@"++encodeName name ++ " ")
     tell "("
@@ -102,7 +102,9 @@ cgDef name def = case def of
     tell "{\n"
     cgFunBody code -- TODO With environment! Must map M3 names to LLVM registers...
     tell "}\n\n"
-  (ExternalFunction linkage ret args) -> tell ("declare "++encodeType ret++" @"++encodeName name++"("++intercalate "," (map encodeFormal args)++")\n")
+  (ExternalFunction linkage ret args) -> do
+    tell ("declare "++encodeType ret++" @"++encodeName local++"("++intercalate "," (map encodeFormal args)++")\n")
+    tell ("@"++encodeName name++" = alias "++encodeType (TPtr (TFunction ret args))++" @"++encodeName local++"\n")
 
 cgFunBody = cgStmts
 

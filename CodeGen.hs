@@ -123,7 +123,7 @@ cgExpr typ e = case e of
     let funcall = "call "++fun_++"("++intercalate "," args_++")"++"\n"
     let TPtr (TFunction retT _) = funType
     if retT == TVoid
-      then tell funcall >> return undefined -- The return value should be guaranteed unused!
+      then tell funcall >> return (error "void function result used by something! In CodeGen!") -- The return value should be guaranteed unused!
       else withFresh retT $ \r -> tell (r ++ " = "++funcall)
   (EVarRef name) -> do
     let nm = encodeName name

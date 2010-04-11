@@ -1,4 +1,5 @@
 import std::io;
+import ex2;
 
 module Main;
 

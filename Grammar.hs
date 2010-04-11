@@ -64,7 +64,10 @@ pStatement = choice $
   -- TODO Implement declarations of multiple variables in one statement
   ,flip VarDecl <$> pType <*> pName <*> (token Semicolon >> CompoundStmt <$> many pStatement <* lookToken CloseBrace)
   ,CompoundStmt <$> inBraces (many pStatement)
+  ,keyword "if" *> (IfStmt <$> inParens pExpression <*> pStatement <*> (fromMaybe EmptyStmt <$> optional pElse))
   ]
+
+pElse = keyword "else" >> pStatement
 
 pExpression = pLeftExpression <**> pExpressionSuffix
 

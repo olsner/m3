@@ -39,6 +39,7 @@ data Show e => Statement e =
   | ExprStmt e
   | VarDecl Name Type (Statement e)
   | CompoundStmt [Statement e]
+  | IfStmt e (Statement e) (Statement e)
   deriving (Show,Eq)
 
 type CompoundStatement e = [Statement e]

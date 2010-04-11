@@ -9,7 +9,7 @@ data Tok =
     Identifier String
     | Reserved String
 
-	-- Literals
+    -- Literals
     | StringTok String
     | IntegerTok Integer
     | CharTok Char
@@ -72,73 +72,73 @@ data Tok =
 line n = setSourceLine (initialPos "hard-coded") n
 
 oneCharOperators = zip ";{}()[],.*&+-/!~|<>?:=" $
-	[Semicolon
-	,OpenBrace
-	,CloseBrace
-	,OpenParen
-	,CloseParen
-	,OpenBracket
-	,CloseBracket
-	,Comma
-	,Dot
-	,Asterix
-	,Ampersand
-	,Plus
-	,Minus
-	,Division
-	,LogicalNot
-	,Complement
-	,Or
-	,LessThan
-	,GreaterThan
-	,QuestionMark
-	,SingleColon
-	,Assignment]
+    [Semicolon
+    ,OpenBrace
+    ,CloseBrace
+    ,OpenParen
+    ,CloseParen
+    ,OpenBracket
+    ,CloseBracket
+    ,Comma
+    ,Dot
+    ,Asterix
+    ,Ampersand
+    ,Plus
+    ,Minus
+    ,Division
+    ,LogicalNot
+    ,Complement
+    ,Or
+    ,LessThan
+    ,GreaterThan
+    ,QuestionMark
+    ,SingleColon
+    ,Assignment]
 
 multiCharOperators =
-	[("&&",ShortcutAnd)
-	,("||",ShortcutOr)
-	,("::",DoubleColon)
-	,("...",Ellipsis)
-	,("->",Arrow)
-	,(">=",GreaterOrEqual)
-	,("<=",LessOrEqual)
-	,("==",Equal)
-	,("!=",NotEqual)
-	,("<<",LeftShift)
-	,(">>",RightShift)]
+    [("&&",ShortcutAnd)
+    ,("||",ShortcutOr)
+    ,("::",DoubleColon)
+    ,("...",Ellipsis)
+    ,("->",Arrow)
+    ,(">=",GreaterOrEqual)
+    ,("<=",LessOrEqual)
+    ,("==",Equal)
+    ,("!=",NotEqual)
+    ,("<<",LeftShift)
+    ,(">>",RightShift)]
 
 reservedWords =
-	["char"
-	,"class"
-	,"const"
-	,"double"
-	,"else"
-	,"enum"
-	,"extern"
-	,"float"
-	,"friend"
-	,"if"
-	,"int"
-	,"long"
-	,"namespace"
-	,"return"
-	,"struct"
-	,"template"
-	,"typedef"
-	,"typename"
-	,"unsigned"
-	,"using"
-	,"void"
-	,"volatile"]
+    ["char"
+    ,"class"
+    ,"const"
+    ,"double"
+    ,"else"
+    ,"enum"
+    ,"extern"
+    ,"float"
+    ,"friend"
+    ,"if"
+    ,"int"
+    ,"long"
+    ,"namespace"
+    ,"return"
+    ,"struct"
+    ,"template"
+    ,"typedef"
+    ,"typename"
+    ,"unsigned"
+    ,"using"
+    ,"void"
+    ,"volatile"]
 
 swap (x,y) = (y,x)
 printCanonically Semicolon = ";\n"
 printCanonically token = (case token of
-	_ | Just c <- lookup token (map swap oneCharOperators) -> [c]
-	_ | Just str <- lookup token (map swap multiCharOperators) -> str
-	Reserved word -> word
-	Identifier ident -> ident
-	StringTok s -> show s
-	IntegerTok i -> show i
-	_ -> "/*"++show token++"*/") ++ " "
+    _ | Just c <- lookup token (map swap oneCharOperators) -> [c]
+    _ | Just str <- lookup token (map swap multiCharOperators) -> str
+    Reserved word -> word
+    Identifier ident -> ident
+    StringTok s -> show s
+    IntegerTok i -> show i
+    _ -> "/*"++show token++"*/") ++ " "

@@ -75,7 +75,6 @@ parseName name = case lexCpp "cmd-line" name of
   Left err -> putStrLn "Error: Can't parse name:" >> print err >> exitFailure
   Right tokens -> return (fst $ runParser pName tokens)
 
--- TODO for each cmd-line arg, parse as ::-separated name and compile
 main = mapM_ (doMain <=< parseName) =<< getArgs
 
 doMain name = do

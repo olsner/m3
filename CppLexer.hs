@@ -149,8 +149,8 @@ hexNumber = do
 	ds <- many1 (satisfy isHexDigit)
 	return (fromReadS readHex ds)
 octalNumber = do
-	ds <- many1 (satisfy (liftM2 (&&) (>= '0') (<= '7')))
-	return (fromReadS readOct ds)
+	ds <- many (satisfy (liftM2 (&&) (>= '0') (<= '7')))
+	return (fromReadS readOct ('0':ds))
 decimalNumber = fmap read $ many1 (satisfy isDigit)
 
 integerLiteral = do

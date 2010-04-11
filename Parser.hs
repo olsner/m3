@@ -6,7 +6,6 @@ module Parser
   onFail,
   next,
   satisfy,
-  token,
   eof,
   manyFinally,
   many1,
@@ -17,7 +16,6 @@ module Parser
   choice,
   guardMsg,
   guardM,
-  lookToken,
   satisfyLook,
   lookNext)
   where
@@ -90,9 +88,6 @@ lookNext = P f
 {-# INLINE satisfy #-}
 satisfy p = next >>= \x -> guardMsg (p x) "Parser.satisfy: failed" >> return x
 satisfyLook p = lookNext >>= \x -> guardMsg (p x) "Parser.satisfyLook: failed" >> return x
-
-token t = satisfy (== t)
-lookToken t = satisfyLook (== t)
 
 eof = P $ \ts -> (if null ts then Right () else Left "Expected end-of-file", ts)
 

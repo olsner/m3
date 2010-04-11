@@ -1,6 +1,7 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 
 import Control.Applicative
+import Control.Arrow
 import Control.Functor.Fix
 import Control.Monad.Reader
 import Control.Monad.State
@@ -14,6 +15,7 @@ import System.Directory
 import System.FilePath
 import System.Exit
 
+import Text.ParserCombinators.Parsec.Pos
 import Text.Printf
 
 import AST
@@ -24,20 +26,22 @@ import CodeGen
 import TypeCheck (typecheck)
 
 none p = not . any p
+token t = satisfy ((== t) . snd)
+lookToken t = satisfyLook ((== t) . snd)
 
 pUnit = Unit <$> many pImport <*> (pModule <|> pFunction)
 
 pModule = keyword "module" >> (Decl <$> pName) <* token Semicolon <*> (ModuleDef <$> many pFunction) <* eof
 
 pImport = keyword "import" >> pName <* token Semicolon
-pSimpleName = (\nm -> QualifiedName [nm]) <$> identifier
-pName = QualifiedName <$> sepBy1 identifier (token DoubleColon)
+pSimpleName = (\(pos,nm) -> QualifiedName [nm]) <$> identifier
+pName = QualifiedName . map snd <$> sepBy1 identifier (token DoubleColon)
 
 pFunction = choice
   [(\ret nm params code -> Decl nm (FunctionDef ret params code)) <$>
     pType <*> pName <*> pFormalParamList <*> pCompoundStatement
   ,keyword "extern" *> (
-    (\linkage ret nm params -> Decl nm (ExternalFunction linkage ret params))
+    (\linkage ret nm params -> Decl nm (ExternalFunction (fmap snd linkage) ret params))
       <$> optional string <*> pType <*> pName <*> pFormalParamList
       <* token Semicolon)
   ]
@@ -63,7 +67,7 @@ pType = pArraySuffix =<< choice
   ,keyword "const" >> (TConst <$> pType)
   ,inBrackets (TPtr <$> pType)
   ]
-pArraySuffix t = optional (inBrackets integer) >>= maybe (return t) (pArraySuffix . flip TArray t)
+pArraySuffix t = optional (snd <$> inBrackets integer) >>= maybe (return t) (pArraySuffix . flip TArray t)
 
 pStatement = choice $
   [token Semicolon $> EmptyStmt
@@ -80,15 +84,15 @@ pExpression = pLeftExpression <**> pExpressionSuffix
 pLeftExpression = choice
   [inParens pExpression
   ,InF . EVarRef <$> pName
-  ,InF . EString <$> string
-  ,InF . EInt <$> integer
+  ,InF . EString . snd <$> string -- FIXME Position is thrown away
+  ,InF . EInt . snd <$> integer -- FIXME Position is thrown away
   ]
 
 pAssignmentOperator = token Assignment -- TODO Also handle operator-assignments, once lexer and token definitions have it.
 
 eAssignment a b c = InF (EAssignment a b c)
 
-pExpressionSuffix :: Parser Tok (ExprF -> ExprF)
+pExpressionSuffix :: Parser Token (ExprF -> ExprF)
 pExpressionSuffix = choice
   [flip <$> (eAssignment <$> pAssignmentOperator) <*> pExpression
   ,(InF .) <$> flip EFunCall <$> inParens (listOf pExpression)
@@ -96,9 +100,9 @@ pExpressionSuffix = choice
   ]
 
 keyword str = token (Identifier str) <|> token (Reserved str)
-parseJust f = fromJust . f <$> satisfy (isJust . f)
+parseJust f = second (fromJust . f) <$> satisfy (isJust . f . snd)
 identifier = parseJust fromIdentifier
-integer = fromIntegral <$> parseJust fromIntegerTok
+integer = second fromIntegral <$> parseJust fromIntegerTok
 string = parseJust fromStringTok
 
 fromIdentifier (Identifier s) = Just s
@@ -127,7 +131,7 @@ parse path = do
       exitFailure
     Right tokens -> do
       --mapM_ print (map snd tokens)
-      return (fst $ runParser pUnit (map snd tokens))
+      return (fst $ runParser pUnit tokens)
 
 process :: Name -> ModMap -> IO ()
 process name mods = do

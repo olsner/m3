@@ -13,7 +13,7 @@ import qualified Data.Map as M
 import Data.Set (Set)
 import qualified Data.Set as S
 
-import CppToken (Tok)
+import CppToken (Token)
 
 newtype Name = QualifiedName [String] deriving (Show,Eq,Ord)
 qualifyName (QualifiedName xs) (QualifiedName ys) = QualifiedName (xs++ys)
@@ -75,10 +75,10 @@ data TypedE = TypedE Type (Expr TypedE) deriving (Show,Eq)
 data Expr e =
     EVarRef Name
   | EFunCall e [e]
-  | EBinary Tok e e
-  | EUnary Tok e
+  | EBinary Token e e
+  | EUnary Token e
   | EConditional e e e -- ^ ?: expressions: condition, true-value, false-value
-  | EAssignment Tok e e
+  | EAssignment Token e e
   | EString String
   | EInt Integer
   | EDeref e -- ^ Doubles as lvalue-to-rvalue conversion, inserted by type checking. All variables are pointers, surprisingly

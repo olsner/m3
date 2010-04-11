@@ -22,14 +22,20 @@ import Grammar (pUnit, pName)
 parse path = do
   input <- readFile path
   let res = lexCpp path input
-  --print res
   case res of
     Left err -> do
       putStrLn "Error in lexical analysis:" >> print err
       exitFailure
     Right tokens -> do
-      --mapM_ print (map snd tokens)
-      return (fst $ runParser pUnit tokens)
+      let (res,rest) = runParser pUnit tokens
+      when (not (null rest)) $ do
+        putStrLn "*** Parse left residue:"
+        mapM_ print rest
+        putStrLn "*** Full token stream:"
+        mapM_ print (map snd tokens)
+        putStrLn "*** (Partial) result:"
+        print res
+      return res
 
 process :: Name -> ModMap -> IO ()
 process name mods = do

@@ -204,7 +204,11 @@ getStringsTypedE (TypedE t e) = TypedE t <$> getStringsExpr e
 -- This is the one with the action
 -- These patterns are just about finding the EString expressions
 getStringsExpr (EFunCall fun args) = EFunCall <$> getStringsTypedE fun <*> mapM getStringsTypedE args
-getStringsExpr e = return e
+getStringsExpr (EAssignment op lval rval) = EAssignment op <$> getStringsTypedE lval <*> getStringsTypedE rval
+getStringsExpr (EDeref e) = EDeref <$> getStringsTypedE e
+getStringsExpr e@(EVarRef _) = return e
+getStringsExpr e@(EInt _) = return e
+getStringsExpr e = error ("Unhandled expression in string finder: "++show e)
 
 showStringLLVM xs = "\""++go xs++"\""
   where

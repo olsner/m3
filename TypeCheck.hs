@@ -113,7 +113,7 @@ tcStmt :: MonadIO m => Type -> [FormalParam] -> Statement ExprF -> TC m (Stateme
 tcStmt ret args stmt = traceM ("tcStmt "++show stmt) $ case stmt of
   (ReturnStmt e) -> ReturnStmt <$> tcExprAsType ret e
   (ExprStmt e) -> ExprStmt <$> tcExpr e
-  ReturnStmtVoid -> return ReturnStmtVoid
+  ReturnStmtVoid -> return ReturnStmtVoid -- TODO Check that return type of function actually is TVoid
   EmptyStmt -> return EmptyStmt
   CompoundStmt [x] -> tcStmt ret args x
   CompoundStmt xs -> CompoundStmt <$> mapM (tcStmt ret args) xs

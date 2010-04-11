@@ -65,6 +65,7 @@ data Type =
 -- Should probably be revived and used to replace TInt, TChar, TBool by the same type. Or just deleted.
 --  | TSizedInt Int -- i8 => TSizedInt 8, etc
   | TChar
+  | TBool
   | TConst Type
   | TPtr Type
   | TArray Int Type
@@ -82,6 +83,7 @@ data Expr e =
   | EAssignment Token e e
   | EString String
   | EInt Integer
+  | EBool Bool
   | EDeref e -- ^ Doubles as lvalue-to-rvalue conversion, inserted by type checking. All variables are pointers, surprisingly
   | EArrToPtr e
   deriving (Show,Eq)

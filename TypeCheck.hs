@@ -133,6 +133,7 @@ tcParams _                      _      = error "Argument number mismatch in code
 
 tcExpr :: MonadIO m => ExprF -> TC m TypedE
 tcExpr e = case outF e of
+  (EBool b) -> return (TypedE TBool (EBool b))
   (EInt i) -> return (TypedE TInt (EInt i))
   (EString str) -> return (TypedE (TPtr (TConst TChar)) (EString str))
   (EVarRef name) -> do

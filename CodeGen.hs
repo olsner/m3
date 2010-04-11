@@ -92,6 +92,7 @@ encodeType (TPtr TVoid) = "i8*"
 encodeType (TPtr t) = encodeType t++"*"
 encodeType TInt = "i32"
 encodeType TChar = "i8"
+encodeType TBool = "i1"
 encodeType TVoid = "void"
 encodeType (TConst t) = encodeType t
 encodeType (TFunction t params) = encodeType t++" ("++intercalate "," (map encodeFormal params)++")"
@@ -140,6 +141,7 @@ withFresh typ m = fresh >>= \r -> m r >> return (encodeType typ ++ " " ++ r)
 cgTypedE (TypedE t e) = cgExpr t e
 -- TODO Somehow memoize the result so that Expr's with sharing have the same sharing - may require clever changes to Expr.
 cgExpr typ e = case e of
+  (EBool b) -> return ("i1 "++if b then "1" else "0")
   (EInt i) -> return ("i32 "++show i)
   (EFunCall fun@(TypedE funType _) args) -> do
     (fun_:args_) <- mapM cgTypedE (fun:args)
@@ -219,6 +221,7 @@ getStringsExpr (EAssignment op lval rval) = EAssignment op <$> getStringsTypedE 
 getStringsExpr (EDeref e) = EDeref <$> getStringsTypedE e
 getStringsExpr e@(EVarRef _) = return e
 getStringsExpr e@(EInt _) = return e
+getStringsExpr e@(EBool _) = return e
 getStringsExpr e = error ("Unhandled expression in string finder: "++show e)
 
 showStringLLVM xs = "\""++(f =<< xs)++"\""

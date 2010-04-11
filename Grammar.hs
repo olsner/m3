@@ -76,6 +76,8 @@ pLeftExpression = choice
   ,InF . EVarRef <$> pName
   ,InF . EString . snd <$> string -- FIXME Position is thrown away
   ,InF . EInt . snd <$> integer -- FIXME Position is thrown away
+  ,InF (EBool True) <$ keyword "true"
+  ,InF (EBool False) <$ keyword "false"
   ]
 
 pAssignmentOperator = token Assignment -- TODO Also handle operator-assignments, once lexer and token definitions have it.

@@ -56,13 +56,21 @@ isLocal str = gets (S.member str)
 runCGM :: Monad m => FormalParams -> CGMT m a -> WriterT String m a
 runCGM args = fmap fst . flip runStateT S.empty {- TODO Names from args... -} . runCounterT (length args+1)
 
+mapMapM :: Ord k => Monad m => (v -> m v') -> Map k v -> m (Map k v')
+mapMapM f map = M.fromList `liftM` mapM (\(k,v) -> (,) k `liftM` f v) (M.toList map)
+
+stringfindUnits :: Map Name (Unit TypedE) -> (Map Name (Unit TypedE), Map String Int)
+stringfindUnits map = runStringFinder (mapMapM getStrings map)
+
 printLLVM :: (MonadIO m, MonadReader (Map Name (Unit TypedE)) m) => Name -> m ()
 printLLVM name = do
   output <- execWriterT $ do
-    Just unit <- asks (M.lookup name)
-    let (unit', stringMap) = runStringFinder $ getStrings unit
-    writeStrings stringMap
-    cgDecl name (unitDecl unit')
+    (units, stringMap) <- asks stringfindUnits
+    local (const units) $ do
+      liftIO . print =<< ask
+      Just unit <- asks (M.lookup name)
+      writeStrings stringMap
+      cgDecl name (unitDecl unit)
   liftIO (writeFile (encodeName name ++ ".ll") output)
 
 cgDecl name (Decl local def) =

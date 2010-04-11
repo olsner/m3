@@ -1,13 +1,15 @@
 import std::io;
 
-module Main;
+module if2;
 
 int main(int argc, [const [const char]] argv)
 {
-    if (0)
+    if (false)
         printf("False is true!?\n");
-    else if (1)
+    else if (true)
         printf("True is true!\n");
     else
         printf("False is false, but true is also false?\n");
+
+    return 0;
 }

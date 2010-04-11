@@ -3,14 +3,12 @@
 module CodeGen (printLLVM) where
 
 import Control.Applicative
-import Control.Monad(liftM, when)
 import Control.Monad.Identity
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
 
 import Data.Char
-import Data.Int
 import Data.List
 import Data.Maybe
 
@@ -18,8 +16,6 @@ import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Map (Map)
 import qualified Data.Map as M
-
-import Numeric
 
 import Text.Printf
 
@@ -34,6 +30,7 @@ import qualified LLVM.FFI.Transforms.Scalar as FFI-}
 
 import AST
 import Counter
+import CppToken
 import SetWriter
 
 type Locals = Set String
@@ -57,27 +54,22 @@ runCGM :: Monad m => FormalParams -> CGMT m a -> WriterT String m a
 runCGM args = fmap fst . flip runStateT S.empty {- TODO Names from args... -} . runCounterT (length args+1)
 
 mapMapM :: Ord k => Monad m => (v -> m v') -> Map k v -> m (Map k v')
-mapMapM f map = M.fromList `liftM` mapM (\(k,v) -> (,) k `liftM` f v) (M.toList map)
+mapMapM f = liftM M.fromList . mapM (\(k,v) -> (,) k `liftM` f v) . M.toList
 
 stringfindUnits :: Map Name (Unit TypedE) -> (Map Name (Unit TypedE), Map String Int)
-stringfindUnits map = runStringFinder (mapMapM getStrings map)
+stringfindUnits = runStringFinder . mapMapM getStrings
 
 printLLVM :: (MonadIO m, MonadReader (Map Name (Unit TypedE)) m) => Name -> m ()
 printLLVM name = do
   output <- execWriterT $ do
-    origUnits <- ask
     (units, stringMap) <- asks stringfindUnits
     local (const units) $ do
-      Just unit <- asks (M.lookup name)
       liftIO (printf "Generating code for %s...\n" (show name))
       writeStrings stringMap
       mapM_ (cgUnit . fromJust . flip M.lookup units) (importedUnits units name)
       cgMain name
   liftIO (writeFile (encodeName name ++ ".ll") output)
 
-mainArgs = [FormalParam TInt Nothing, FormalParam (TPtr (TConst (TPtr (TConst TChar)))) Nothing]
-mainType = TFunction TInt mainArgs
---cgMain mainModule = tell ("@main = alias "++encodeType (TPtr mainType)++" @"++encodeName (qualifyName mainModule (QualifiedName ["main"]))++"\n")
 cgMain mainModule = tell $
     "define external i32 @main(i32, i8**) {\n"++
     printf "\t%%ret = tail call i32(i32,i8**)* @%s (i32 %%0,i8** %%1)\n" (encodeName actualMain)++
@@ -107,7 +99,7 @@ encodeType (TArray len typ) = "["++show len++" x "++encodeType typ++"]"
 encodeType t = "i32 ; "++show t++"\n"
 
 encodeFormal VarargParam = "..."
-encodeFormal (FormalParam typ name) = encodeType typ
+encodeFormal (FormalParam typ _) = encodeType typ
 
 cgDef name local def = case def of
   (ModuleDef decls) -> mapM_ (cgDecl name) decls
@@ -121,7 +113,7 @@ cgDef name local def = case def of
     tell "{\n"
     cgFunBody code -- TODO With environment! Must map M3 names to LLVM registers...
     tell "}\n\n"
-  (ExternalFunction linkage ret args) -> do
+  (ExternalFunction _linkage ret args) -> do
     tell ("declare "++encodeType ret++" @"++encodeName local++"("++intercalate "," (map encodeFormal args)++")\n")
     tell ("@"++encodeName name++" = alias "++encodeType (TPtr (TFunction ret args))++" @"++encodeName local++"\n")
 
@@ -138,14 +130,12 @@ cgStmt stmt = case stmt of
   (ReturnStmtVoid) -> tell "ret void\n"
   (ExprStmt expr) -> cgTypedE expr >> return ()
   CompoundStmt xs -> mapM_ cgStmt xs
-  (VarDecl name typ stmt) -> withLocal (encodeName name) $ do
+  (VarDecl name typ x) -> withLocal (encodeName name) $ do
     tell ("%"++encodeName name++" = alloca "++encodeType typ++"\n")
-    cgStmt stmt
-  other -> tell ("; UNIMPL!!! "++show other++"\n")
+    cgStmt x
+  --other -> tell ("; UNIMPL!!! "++show other++"\n")
 
 withFresh typ m = fresh >>= \r -> m r >> return (encodeType typ ++ " " ++ r)
-
-cgArgs = zipWith (\(TypedE typ _) v -> encodeType typ++" "++v)
 
 cgTypedE (TypedE t e) = cgExpr t e
 -- TODO Somehow memoize the result so that Expr's with sharing have the same sharing - may require clever changes to Expr.
@@ -162,14 +152,14 @@ cgExpr typ e = case e of
     let nm = encodeName name
     local <- isLocal nm
     return (encodeType typ++(if local then " %" else " @")++nm)
-  (EArrToPtr (TypedE arrT@(TArray _ elem) arr)) -> do
+  (EArrToPtr (TypedE arrT@(TArray _ arrelem) arr)) -> do
     v <- cgExpr (TPtr arrT) arr
-    return (encodeType (TPtr elem)++" getelementptr ("++v++", i1 0, i1 0)")
+    return (encodeType (TPtr arrelem)++" getelementptr ("++v++", i1 0, i1 0)")
   (EDeref loc) -> withFresh typ $ \r -> do
-    loc <- cgTypedE loc
-    tell (r++" = load "++loc++"\n")
-  (EAssignment assignType lval rval) -> do
-    let (TypedE typ (EDeref loc)) = lval
+    loc' <- cgTypedE loc
+    tell (r++" = load "++loc'++"\n")
+  (EAssignment (_,Assignment) lval rval) -> do
+    let (TypedE _ (EDeref loc)) = lval
     lv <- cgTypedE loc
     rv <- cgTypedE rval
     tell ("store "++rv++", "++lv++"\n")
@@ -193,17 +183,17 @@ getStringMap = lift (listen (return ()) >>= \((),w) -> return w)
 hasString s = M.member s <$> getStringMap
 stringReplacement str = do
     b <- hasString str
-    i <- if b then get else new
+    i <- if b then getString else newString
     let arrType = TArray (length str+1) TChar
     return $
       TypedE (TPtr TChar) $
       EArrToPtr $ TypedE arrType $
         EVarRef (QualifiedName [printf ".STR%d" i])
   where
-    get :: SF Int
-    get = fromJust . M.lookup str <$> getStringMap
-    new :: SF Int
-    new = getAndInc >>= \i ->
+    getString :: SF Int
+    getString = fromJust . M.lookup str <$> getStringMap
+    newString :: SF Int
+    newString = getAndInc >>= \i ->
       lift (tell (M.fromList [(str,i)])) >> return i
 
 getStrings :: Unit TypedE -> SF (Unit TypedE)
@@ -231,12 +221,11 @@ getStringsExpr e@(EVarRef _) = return e
 getStringsExpr e@(EInt _) = return e
 getStringsExpr e = error ("Unhandled expression in string finder: "++show e)
 
-showStringLLVM xs = "\""++go xs++"\""
+showStringLLVM xs = "\""++(f =<< xs)++"\""
   where
-    go [] = []
-    go (x:xs)
-      | isPrint x = x:go xs
-      | otherwise = "\\" ++ printf "%02x" (ord x) ++ go xs
+    f x
+      | isPrint x = [x]
+      | otherwise = "\\" ++ printf "%02x" (ord x)
 writeStrings = mapM (tell . makeString) . M.toList
   where
     makeString (str,i) = printf "@.STR%d = internal constant [%d x i8] c%s\n" i (length str+1) (showStringLLVM (str++"\0"))

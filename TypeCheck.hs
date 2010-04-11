@@ -4,7 +4,8 @@ module TypeCheck (typecheck) where
 
 import Control.Applicative
 import Control.Monad.Identity
-import Control.Monad.Reader
+-- "local" is used as a variable name a lot in this file, let's not get it confused with the Reader definition
+import Control.Monad.Reader hiding (local)
 import Control.Monad.State
 import Control.Functor.Fix
 
@@ -31,6 +32,7 @@ runTC m mods = runStateT m (TCState { bindings = M.empty, modules = mods })
 modifyBindings f = modify (\s -> s { bindings = f (bindings s) })
 modifyModules f = modify (\s -> s { modules = f (modules s) })
 
+-- TODO Add checking to make sure that added aliases don't create loops.
 addBinding name bind = do
   --liftIO (printf "addBinding %s -> %s\n" (show name) (show bind))
   modifyBindings (M.insert name bind)
@@ -40,7 +42,7 @@ getBindingType name = traceM ("getBindingType "++show name) $ do
   bind <- getBinding name
   case bind of
     (Var typ) -> return typ
-    (Alias name) -> getBindingType name
+    (Alias alias) -> getBindingType alias
 getBinding name = fromJust . M.lookup name <$> gets bindings
 
 getModule name = fromJust . M.lookup name <$> gets modules
@@ -69,8 +71,8 @@ withDecl name decl@(Decl local def) = traceM ("withDecl "++show decl++" in "++sh
   withDef (qualifyName name local) local def
 withDef name local def = traceM (printf "withDef %s local %s: %s" (show name) (show local) (show def)) . case def of
   (ModuleDef decls) -> withDecls name decls
-  (FunctionDef retT args code) -> inScope name (Var (TFunction retT args)) . inScope local (Alias name)
-  (ExternalFunction linkage ret args) -> inScope name (Var (TFunction ret args)) . inScope local (Alias name)
+  (FunctionDef retT args _) -> inScope name (Var (TFunction retT args)) . inScope local (Alias name)
+  (ExternalFunction _ ret args) -> inScope name (Var (TFunction ret args)) . inScope local (Alias name)
 
 withImport name m = do
   unit <- tcUnitByName name
@@ -78,9 +80,9 @@ withImport name m = do
 
 tcUnitByName :: MonadIO m => Name -> TC m (Unit TypedE)
 tcUnitByName name = do
-  mod <- getModule name -- errors if module not found - it must be found
-  liftIO (printf "tcUnitByName: %s: %s\n" (show name) (either (const "not yet typechecked") (const "already typechecked") mod))
-  case mod of
+  res <- getModule name -- errors if module not found - it must be found
+  liftIO (printf "tcUnitByName: %s: %s\n" (show name) (either (const "not yet typechecked") (const "already typechecked") res))
+  case res of
     Left untyped -> tcUnit name untyped
     Right typed -> return typed
 
@@ -113,20 +115,21 @@ tcStmt ret args stmt = traceM ("tcStmt "++show stmt) $ case stmt of
   (ExprStmt e) -> ExprStmt <$> tcExpr e
   ReturnStmtVoid -> return ReturnStmtVoid
   EmptyStmt -> return EmptyStmt
-  CompoundStmt [stmt] -> tcStmt ret args stmt
+  CompoundStmt [x] -> tcStmt ret args x
   CompoundStmt xs -> CompoundStmt <$> mapM (tcStmt ret args) xs
-  VarDecl name typ stmt -> VarDecl name typ <$> inScope name (Var typ) (tcStmt ret args stmt)
+  VarDecl name typ x -> VarDecl name typ <$> inScope name (Var typ) (tcStmt ret args x)
 
 tcExprAsType :: MonadIO m => Type -> ExprF -> TC m TypedE
 tcExprAsType expT e = do
-  e@(TypedE t _) <- tcExpr e
-  if not (t == expT) then error ("Expression "++show e++" not of expected type "++show expT++" but "++show t) else return e
+  typed@(TypedE t _) <- tcExpr e
+  if not (t == expT) then error ("Expression "++show typed++" not of expected type "++show expT++" but "++show t) else return typed
 
 tcParams :: MonadIO m => [FormalParam] -> [ExprF] -> TC m [TypedE]
 tcParams (FormalParam typ _:ps) (x:xs) = liftM2 (:) (tcExprAsType typ x) (tcParams ps xs)
-tcParams [VarargParam] xs = mapM tcExpr xs
-tcParams [] [] = return []
--- missing cases represent various errors...
+tcParams [VarargParam]          xs     = mapM tcExpr xs
+tcParams (VarargParam:_)        _      = error "Vararg param in non-last position. The type-checker should have caught this already!"
+tcParams []                     []     = return []
+tcParams _                      _      = error "Argument number mismatch in code-generator. The type-checker should have caught this already!"
 
 tcExpr :: MonadIO m => ExprF -> TC m TypedE
 tcExpr e = case outF e of
@@ -137,11 +140,13 @@ tcExpr e = case outF e of
     bind <- getBinding name
     return $ TypedE typ $ EDeref $ TypedE (TPtr typ) $ EVarRef $
       case bind of
-        (Var typ) -> name
-        (Alias name) -> name
+        (Var _) -> name
+        (Alias alias) -> alias
   (EFunCall fun args) -> do
     (TypedE typ fune) <- tcExpr fun
-    let fun_ = TypedE (TPtr typ) $ case fune of (EDeref (TypedE _ e)) -> e
+    let fun_ = TypedE (TPtr typ) $ case fune of
+                (EDeref (TypedE _ funptr)) -> funptr
+                _ -> error ("Function call on non-lvalue "++show fune)
     case typ of
       (TFunction retT params) -> do
         args_ <- tcParams params args

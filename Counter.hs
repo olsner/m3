@@ -7,11 +7,8 @@ import Control.Monad.Trans
 import Control.Monad.Reader
 import Control.Monad.Writer
 import Control.Monad.State
-import Control.Monad.Identity
 
 newtype CounterT s m a = CounterT { unCounterT :: StateT s m a } deriving (Monad,Functor,MonadTrans)
-
-type Counter s = CounterT s Identity
 
 instance Monad m => Applicative (StateT s m) where
   pure = return
@@ -32,8 +29,6 @@ instance (MonadState s m) => MonadState s (CounterT c m) where
 
 runCounterT :: Monad m => s -> CounterT s m a -> m a
 runCounterT s m = liftM fst (runStateT (unCounterT m) s)
-
-runCounter s m = runIdentity (runCounterT s m)
 
 getAndInc :: Monad m => Enum s => CounterT s m s
 getAndInc = CounterT (get <* modify succ)

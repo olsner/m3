@@ -139,4 +139,4 @@ printCanonically token = (case token of
 	Identifier ident -> ident
 	StringTok s -> show s
 	IntegerTok i -> show i
-	otherwise -> "/*"++show token++"*/") ++ " "
+	_ -> "/*"++show token++"*/") ++ " "

@@ -7,7 +7,6 @@ import Control.Monad.Trans
 import Control.Monad.State
 import Control.Monad.Identity
 
-import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Map (Map)

@@ -49,8 +49,6 @@ type ParseError = String
 lexCpp :: String -> String -> Either ParseError [Token]
 #if USE_PARSEC
 lexCpp filename source = runParser file () filename source
-	where
-		position = initialPos filename
 #else
 lexCpp filename source = Right $ fst $ runParser file source
 #endif
@@ -84,7 +82,7 @@ preprocLine = ignore $ try $ do
 	unless (sourceColumn pos == 1) (fail "Retry other token")
 	many whiteSpace
 	-- Save position of '#', not of the beginning of the line
-	pos <- saveTokPos (char '#' >> fmap StringTok takeRestOfLine)
+	_pos <- saveTokPos (char '#' >> fmap StringTok takeRestOfLine)
 	-- Since they are mostly spam, ignore preprocLines for now
 	-- We should take in # line file-lines and update SourcePos with the information
 	return ()

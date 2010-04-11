@@ -22,10 +22,8 @@ module Parser
 
 import Control.Applicative
 import Control.Arrow
-import Control.Monad.Instances
 
 import Control.Monad.State
-import Control.Monad.Error
 
 newtype Parser t a = P { unP :: [t] -> (Either String a, [t]) }
 
@@ -96,7 +94,7 @@ list p ps = (:) <$> p <*> ps
 manyFinally p z = many p <* z
 many1 p = list p (many p)
 
-exactly 0 p = pure []
+exactly 0 _ = pure []
 exactly n p = list p (exactly (n - 1) p)
 
 sepBy1 p s = list p (many (s *> p))

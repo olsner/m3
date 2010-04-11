@@ -118,6 +118,7 @@ tcStmt ret args stmt = traceM ("tcStmt "++show stmt) $ case stmt of
   CompoundStmt [x] -> tcStmt ret args x
   CompoundStmt xs -> CompoundStmt <$> mapM (tcStmt ret args) xs
   VarDecl name typ x -> VarDecl name typ <$> inScope name (Var typ) (tcStmt ret args x)
+  IfStmt cond t f -> IfStmt <$> tcExprAsType TBool cond <*> tcStmt ret args t <*> tcStmt ret args f
 
 tcExprAsType :: MonadIO m => Type -> ExprF -> TC m TypedE
 tcExprAsType expT e = do

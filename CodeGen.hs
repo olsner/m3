@@ -40,6 +40,8 @@ type CGM a = forall m . (MonadIO m) => CGMT m a
 fresh :: CGM String
 fresh = printf "%%%d" <$> getAndInc
 
+freshLabel = printf ".label%d" <$> getAndInc
+
 withLocal :: String -> CGM a -> CGM a
 withLocal str m = do
   s <- get
@@ -132,6 +134,17 @@ cgStmt stmt = case stmt of
   (VarDecl name typ x) -> withLocal (encodeName name) $ do
     tell ("%"++encodeName name++" = alloca "++encodeType typ++"\n")
     cgStmt x
+  (IfStmt cond t f) -> do
+    c <- cgTypedE cond
+    tblock <- freshLabel
+    fblock <- freshLabel
+    end <- freshLabel
+    tell ("br "++c++", label %"++tblock++", label %"++fblock++"\n")
+    tell (tblock++":\n")
+    cgStmt t
+    tell ("br label %"++end++"\n"++fblock++":\n")
+    cgStmt f
+    tell ("br label %"++end++"\n"++end++":\n")
   --other -> tell ("; UNIMPL!!! "++show other++"\n")
 
 withFresh typ m = fresh >>= \r -> m r >> return (encodeType typ ++ " " ++ r)
@@ -208,7 +221,9 @@ getStringsStmt (ReturnStmt e) = ReturnStmt <$> getStringsTypedE e
 getStringsStmt (ExprStmt e) = ExprStmt <$> getStringsTypedE e
 getStringsStmt (VarDecl n t s) = VarDecl n t <$> getStringsStmt s
 getStringsStmt (CompoundStmt ss) = CompoundStmt <$> mapM getStringsStmt ss
-getStringsStmt s = error (show s)
+getStringsStmt (IfStmt c t f) = IfStmt <$> getStringsTypedE c <*> getStringsStmt t <*> getStringsStmt f
+getStringsStmt s@(EmptyStmt) = return s
+getStringsStmt s@(ReturnStmtVoid) = return s
 
 getStringsTypedE (TypedE _ (EString str)) = stringReplacement str
 getStringsTypedE (TypedE t e) = TypedE t <$> getStringsExpr e

@@ -31,7 +31,10 @@ runTC m mods = runStateT m (TCState { bindings = M.empty, modules = mods })
 modifyBindings f = modify (\s -> s { bindings = f (bindings s) })
 modifyModules f = modify (\s -> s { modules = f (modules s) })
 
-addBinding name bind = liftIO (printf "addBinding %s -> %s\n" (show name) (show bind)) >> modifyBindings (M.insert name bind) >> (liftIO . print =<< gets bindings)
+addBinding name bind = do
+  --liftIO (printf "addBinding %s -> %s\n" (show name) (show bind))
+  modifyBindings (M.insert name bind)
+  --liftIO . print =<< gets bindings
 getBindingType name = traceM ("getBindingType "++show name) $ do
   --liftIO . print =<< gets bindings
   bind <- getBinding name
@@ -76,7 +79,7 @@ withImport name m = do
 tcUnitByName :: MonadIO m => Name -> TC m (Unit TypedE)
 tcUnitByName name = do
   mod <- getModule name -- errors if module not found - it must be found
-  liftIO (printf "tcUnitByName: %s -> %s\n" (show name) (show mod))
+  liftIO (printf "tcUnitByName: %s: %s\n" (show name) (either (const "not yet typechecked") (const "already typechecked") mod))
   case mod of
     Left untyped -> tcUnit name untyped
     Right typed -> return typed

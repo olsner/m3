@@ -132,9 +132,7 @@ parse path = do
 process :: Name -> ModMap -> IO ()
 process name mods = do
   let Just ast = M.lookup name mods
-  print ast
   mods' <- runReaderT (typecheck name) mods
-  print (M.lookup name mods')
   runReaderT (printLLVM name) mods'
 
 firstM :: Monad m => (a -> m (Maybe b)) -> [a] -> m b
@@ -147,9 +145,9 @@ firstM f [] = fail "Failed"
 
 nameToPath (QualifiedName components) = joinPath components
 
-maybeImportModule name path = do
+tryImportModule name path = do
   let modPath = addExtension (path </> nameToPath name) ".m"
-  printf "Load %s: Trying %s\n" (show name) modPath
+  printf "tryImportModule: %s: Trying %s\n" (show name) modPath
   e <- doesFileExist modPath
   if e then Just <$> parse modPath else return Nothing
 
@@ -167,12 +165,12 @@ ifNotLoaded name m = gets (M.lookup name) >>= \res -> case res of
 
 processImport :: Name -> Mod (Unit ExprF)
 processImport name = ifNotLoaded name $ do
-  unit <- liftIO $ firstM (maybeImportModule name) includePath
+  unit <- liftIO $ firstM (tryImportModule name) includePath
   mapM_ processImport (unitImports unit)
   return unit
 
 -- TODO for each cmd-line arg, parse as ::-separated name and compile
-main = doMain (QualifiedName ["ex2"])
+main = doMain (QualifiedName ["ex3"])
 
 doMain name = do
   (mod,mods) <- runMod M.empty (processImport name)

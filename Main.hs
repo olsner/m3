@@ -158,7 +158,7 @@ runMod = flip runStateT
 
 ifNotLoaded name m = gets (M.lookup name) >>= \res -> case res of
   Just mod -> return mod
-  Nothing -> m >>= \mod -> modify (M.insert name mod) >> return mod
+  Nothing -> m >>= \mod -> mod <$ modify (M.insert name mod)
 
 processImport :: Name -> Mod (Unit ExprF)
 processImport name = ifNotLoaded name $ do
@@ -166,6 +166,7 @@ processImport name = ifNotLoaded name $ do
   mapM_ processImport (unitImports unit)
   return unit
 
+-- TODO for each cmd-line arg, parse as ::-separated name and compile
 main = doMain (QualifiedName ["ex2"])
 
 doMain name = do

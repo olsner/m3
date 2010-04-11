@@ -10,8 +10,9 @@ import Data.Maybe
 import Data.Map (Map)
 import qualified Data.Map as M
 
-import System.FilePath
 import System.Directory
+import System.FilePath
+import System.Exit
 
 import Text.Printf
 
@@ -120,9 +121,13 @@ parse path = do
   input <- readFile path
   let res = lexCpp path input
   --print res
-  let Right tokens = res
-  --mapM_ print (map snd tokens)
-  return (fst $ runParser pUnit (map snd tokens))
+  case res of
+    Left err -> do
+      putStrLn "Error in lexical analysis:" >> print err
+      exitFailure
+    Right tokens -> do
+      --mapM_ print (map snd tokens)
+      return (fst $ runParser pUnit (map snd tokens))
 
 process :: Name -> ModMap -> IO ()
 process name mods = do

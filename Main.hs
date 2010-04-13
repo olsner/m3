@@ -37,11 +37,6 @@ parse path = do
         print res
       return res
 
-process :: Name -> ModMap -> IO ()
-process name mods = do
-  mods' <- runReaderT (typecheck name) mods
-  runReaderT (printLLVM name) mods'
-
 firstM :: Monad m => (a -> m (Maybe b)) -> [a] -> m (Maybe b)
 firstM f (x:xs) = do
   fx <- f x
@@ -86,3 +81,9 @@ main = mapM_ (doMain <=< parseName) =<< getArgs
 doMain name = do
   mods <- runMod M.empty (processImport name)
   process name mods
+
+process :: Name -> ModMap -> IO ()
+process name mods = do
+  mods' <- runReaderT (typecheck name) mods
+  mapM_ print (M.toList mods')
+  runReaderT (printLLVM name) mods'

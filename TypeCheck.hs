@@ -2,7 +2,7 @@
 
 module TypeCheck (typecheck) where
 
-import Control.Applicative
+import Control.Applicative hiding (Const)
 import Control.Monad.Identity
 -- "local" is used as a variable name a lot in this file, let's not get it confused with the Reader definition
 import Control.Monad.Reader hiding (local)
@@ -18,7 +18,8 @@ import Text.Printf
 import AST
 import CppToken
 
-data Binding = Var Type | Alias Name deriving (Show)
+data VarType = Const | NonConst deriving (Show)
+data Binding = Var VarType Type | Alias Name deriving (Show)
 type ModBinding = Either (Unit ExprF) (Unit TypedE)
 type ModMap = Map Name ModBinding
 data TCState = TCState { bindings :: Map Name Binding, modules :: ModMap }
@@ -38,13 +39,11 @@ addBinding name bind = do
   --liftIO (printf "addBinding %s -> %s\n" (show name) (show bind))
   modifyBindings (M.insert name bind)
   --liftIO . print =<< gets bindings
-getBindingType name = traceM ("getBindingType "++show name) $ do
-  --liftIO . print =<< gets bindings
-  bind <- getBinding name
-  case bind of
-    (Var typ) -> return typ
-    (Alias alias) -> getBindingType alias
-getBinding name = fromMaybe (error ("getBinding "++show name++": Name not found")) . M.lookup name <$> gets bindings
+getBinding name = do
+  r <- fromMaybe (error ("getBinding "++show name++": Name not found")) . M.lookup name <$> gets bindings
+  case r of
+    (Alias alias) -> getBinding alias
+    _             -> return (name,r)
 
 getModule name = fromJust . M.lookup name <$> gets modules
 putModule name bind = modifyModules (M.insert name bind)
@@ -72,14 +71,14 @@ withDecl name decl@(Decl local def) = traceM ("withDecl "++show decl++" in "++sh
   withDef (qualifyName name local) local def
 withDef name local def = traceM (printf "withDef %s local %s: %s" (show name) (show local) (show def)) . case def of
   (ModuleDef decls) -> withDecls name decls
-  (FunctionDef retT args _) -> inScope name (Var (TFunction retT args)) . inScope local (Alias name)
-  (ExternalFunction _ ret args) -> inScope name (Var (TFunction ret args)) . inScope local (Alias name)
+  (FunctionDef retT args _) -> inScope name (Var NonConst (TFunction retT args)) . inScope local (Alias name)
+  (ExternalFunction _ ret args) -> inScope name (Var NonConst (TFunction ret args)) . inScope local (Alias name)
 
 withImport name m = do
   unit <- tcUnitByName name
   traceM (printf "withImport %s" (show name)) (withUnitImported unit m)
 
-withArg (FormalParam typ (Just name)) m = inScope name (Var typ) m
+withArg (FormalParam typ (Just name)) m = inScope name (Var Const typ) m
 withArg _ m = m
 
 tcUnitByName :: MonadIO m => Name -> TC m (Unit TypedE)
@@ -107,10 +106,10 @@ tcDef :: MonadIO m => Name -> Def ExprF -> TC m (Def TypedE)
 tcDef name def = traceM ("tcDef "++show name++": "++show def) $ case def of
   (ModuleDef decls) -> ModuleDef <$> mapM (tcDecl name) (decls)
   (FunctionDef retT args code) -> do
-    addBinding name (Var (TFunction retT args))
+    addBinding name (Var NonConst (TFunction retT args))
     FunctionDef retT args <$> foldr withArg (mapM (tcStmt retT args) code) args
   (ExternalFunction linkage ret args) -> do
-    addBinding name (Var (TFunction ret args))
+    addBinding name (Var NonConst (TFunction ret args))
     return (ExternalFunction linkage ret args)
 
 tcStmt :: MonadIO m => Type -> [FormalParam] -> Statement ExprF -> TC m (Statement TypedE)
@@ -121,7 +120,7 @@ tcStmt ret args stmt = traceM ("tcStmt "++show stmt) $ case stmt of
   EmptyStmt -> return EmptyStmt
   CompoundStmt [x] -> tcStmt ret args x
   CompoundStmt xs -> CompoundStmt <$> mapM (tcStmt ret args) xs
-  VarDecl name typ x -> VarDecl name typ <$> inScope name (Var typ) (tcStmt ret args x)
+  VarDecl name typ x -> VarDecl name typ <$> inScope name (Var (case typ of TConst _ -> Const; _ -> NonConst) typ) (tcStmt ret args x)
   IfStmt cond t f -> IfStmt <$> tcExprAsType TBool cond <*> tcStmt ret args t <*> tcStmt ret args f
 
 tcExprAsType :: MonadIO m => Type -> ExprF -> TC m TypedE
@@ -142,12 +141,10 @@ tcExpr e = case outF e of
   (EInt i) -> return (TypedE TInt (EInt i))
   (EString str) -> return (TypedE (TPtr (TConst TChar)) (EString str))
   (EVarRef name) -> do
-    typ <- getBindingType name
-    bind <- getBinding name
-    return $ TypedE typ $ EDeref $ TypedE (TPtr typ) $ EVarRef $
-      case bind of
-        (Var _) -> name
-        (Alias alias) -> alias
+    (varName,Var qual typ) <- getBinding name
+    return $ TypedE typ $ case qual of
+      Const -> EVarRef varName
+      _     -> EDeref $ TypedE (TPtr typ) $ EVarRef varName
   (EFunCall fun args) -> do
     (TypedE typ fune) <- tcExpr fun
     let fun_ = TypedE (TPtr typ) $ case fune of

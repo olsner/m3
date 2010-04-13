@@ -59,7 +59,7 @@ pArraySuffix t = optional (snd <$> inBrackets integer) >>= maybe (return t) (pAr
 pStatement = choice $
   [token Semicolon $> EmptyStmt
   ,keyword "return" >> token Semicolon >> return ReturnStmtVoid
-  ,keyword "return" *> (ReturnStmt <$> pExpression) <* token Semicolon
+  ,ReturnStmt <$> (keyword "return" *> pExpression <* token Semicolon)
   ,ExprStmt <$> pExpression >>= \t -> t `seq` token Semicolon >> return t
   -- TODO Implement declarations of multiple variables in one statement
   ,flip VarDecl <$> pType <*> pName <*> (token Semicolon >> CompoundStmt <$> many pStatement <* lookToken CloseBrace)
@@ -83,13 +83,18 @@ pLeftExpression = choice
 pAssignmentOperator = token Assignment -- TODO Also handle operator-assignments, once lexer and token definitions have it.
 
 eAssignment a b c = InF (EAssignment a b c)
+eBinop a b c = InF (EBinary a b c)
 
 pExpressionSuffix :: Parser Token (ExprF -> ExprF)
 pExpressionSuffix = choice
   [flip <$> (eAssignment <$> pAssignmentOperator) <*> pExpression
+  ,flip <$> (eBinop <$> pBinop) <*> pExpression
   ,(InF .) <$> flip EFunCall <$> inParens (listOf pExpression)
   ,return id
   ]
+
+pBinop = choice
+  [token Equal]
 
 keyword str = token (Reserved str)
 parseJust f = second (fromJust . f) <$> satisfy (isJust . f . snd)

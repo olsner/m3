@@ -16,6 +16,7 @@ import qualified Data.Map as M
 import Text.Printf
 
 import AST
+import CppToken
 
 data Binding = Var Type | Alias Name deriving (Show)
 type ModBinding = Either (Unit ExprF) (Unit TypedE)
@@ -161,4 +162,11 @@ tcExpr e = case outF e of
     lv@(TypedE lvT (EDeref _)) <- tcExpr lval
     rv <- tcExprAsType lvT rval
     return (TypedE lvT (EAssignment op lv rv))
+  (EBinary op x y) -> do
+    tx@(TypedE t _) <- tcExpr x
+    (res,op2type) <- binopTypeRule (snd op) t
+    ty <- tcExprAsType op2type y
+    return (TypedE res (EBinary op tx ty))
   other -> error ("tcExpr: Unknown expression "++show other)
+
+binopTypeRule Equal op1type = return (TBool, op1type) -- TODO Also needs to check that op1type is supported by the operator

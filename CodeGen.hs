@@ -188,16 +188,17 @@ cgExpr typ e = case e of
     rv <- cgTypedE rval
     tell ("store "++rv++", "++lv++"\n")
     return rv
+  (EBinary op x y) -> do
+    xres <- cgTypedE x
+    yres <- cgTypedE y
+    withFresh typ $ \r -> tell (r++" = "++getBinopCode op typ++" "++xres++","++(unwords.tail.words) yres++"\n")
   other -> error ("Unimplemented expression: "++show other)
 
-{-    EVarRef Name
-  | EFunCall Expr [Expr]
-  | EBinary Tok Expr Expr
-  | EUnary Tok Expr
-  | EConditional Expr Expr Expr -- ^ ?: expressions: condition, true-value, false-value
-  | EAssignment Tok Expr Expr
-  | EString String
-  | EInt Integer -}
+getBinopCode (pos,Equal) typ = case typ of
+  TInt -> "icmp eq"
+  TBool -> "icmp eq"
+  TChar -> "icmp eq"
+  _ -> error (show pos++": Equal operator only supports ints, attempted on "++show typ)
 
 type SF a = CounterT Int (SetWriter (Map String Int)) a
 runStringFinder :: SF a -> (a,Map String Int)
@@ -242,6 +243,7 @@ getStringsTypedE (TypedE t e) = TypedE t <$> getStringsExpr e
 -- These patterns are just about finding the EString expressions
 getStringsExpr (EFunCall fun args) = EFunCall <$> getStringsTypedE fun <*> mapM getStringsTypedE args
 getStringsExpr (EAssignment op lval rval) = EAssignment op <$> getStringsTypedE lval <*> getStringsTypedE rval
+getStringsExpr (EBinary op x y) = EBinary op <$> getStringsTypedE x <*> getStringsTypedE y
 getStringsExpr (EDeref e) = EDeref <$> getStringsTypedE e
 getStringsExpr e@(EVarRef _) = return e
 getStringsExpr e@(EInt _) = return e

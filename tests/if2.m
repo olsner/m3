@@ -4,12 +4,21 @@ module if2;
 
 int main(int argc, [const [const char]] argv)
 {
-    if (false)
-        printf("False is true!?\n");
-    else if (true)
-        printf("True is true!\n");
+    if (argc == 1)
+    {
+        printf("No args\n");
+        return 0;
+    }
+    else if (argc == 2)
+    {
+        printf("One arg\n");
+        return 1;
+    }
     else
-        printf("False is false, but true is also false?\n");
+    {
+        printf("Ooh, many args\n");
+        return 2;
+    }
 
-    return 0;
+    return 3;
 }

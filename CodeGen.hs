@@ -1,4 +1,5 @@
 {-# LANGUAGE NoMonomorphismRestriction,ScopedTypeVariables,ExistentialQuantification,FlexibleContexts,RankNTypes #-}
+{-# OPTIONS_HADDOCK ignore-exports #-}
 
 module CodeGen (printLLVM) where
 

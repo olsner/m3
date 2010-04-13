@@ -40,6 +40,7 @@ type CGM a = forall m . (MonadIO m) => CGMT m a
 fresh :: CGM String
 fresh = printf "%%%d" <$> getAndInc
 
+freshLabel :: CGM String
 freshLabel = printf ".label%d" <$> getAndInc
 
 withLocal :: String -> CGM a -> CGM a

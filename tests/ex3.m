@@ -11,6 +11,7 @@ int main(int argc, [const [const char]] argv)
 	tempString = "Let's store a string in a variable";
 	test = 42;
 	printf("Hello world: %d (%s)\n", test, "And another string argument");
+	test = 0;
 	printf("%s\n", tempString);
 	return test;
 }

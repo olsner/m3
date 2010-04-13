@@ -78,6 +78,9 @@ withImport name m = do
   unit <- tcUnitByName name
   traceM (printf "withImport %s" (show name)) (withUnitImported unit m)
 
+withArg (FormalParam typ (Just name)) m = inScope name (Var typ) m
+withArg _ m = m
+
 tcUnitByName :: MonadIO m => Name -> TC m (Unit TypedE)
 tcUnitByName name = do
   res <- getModule name -- errors if module not found - it must be found
@@ -104,7 +107,7 @@ tcDef name def = traceM ("tcDef "++show name++": "++show def) $ case def of
   (ModuleDef decls) -> ModuleDef <$> mapM (tcDecl name) (decls)
   (FunctionDef retT args code) -> do
     addBinding name (Var (TFunction retT args))
-    FunctionDef retT args <$> mapM (tcStmt retT args) code
+    FunctionDef retT args <$> foldr withArg (mapM (tcStmt retT args) code) args
   (ExternalFunction linkage ret args) -> do
     addBinding name (Var (TFunction ret args))
     return (ExternalFunction linkage ret args)

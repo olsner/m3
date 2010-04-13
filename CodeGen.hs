@@ -38,7 +38,7 @@ type CGMT m = CounterT Int (StateT Locals (WriterT String m))
 type CGM a = forall m . (MonadIO m) => CGMT m a
 
 fresh :: CGM String
-fresh = printf "%%%d" <$> getAndInc
+fresh = printf "%%t%d" <$> getAndInc
 
 freshLabel :: CGM String
 freshLabel = printf ".label%d" <$> getAndInc
@@ -54,7 +54,11 @@ isLocal :: String -> CGM Bool
 isLocal str = gets (S.member str)
 
 runCGM :: Monad m => FormalParams -> CGMT m a -> WriterT String m a
-runCGM args = fmap fst . flip runStateT S.empty {- TODO Names from args... -} . runCounterT (length args+1)
+runCGM args = fmap fst . flip runStateT (S.fromList $ concatMap f args) . runCounterT 0
+  where
+    f (FormalParam _ (Just name)) = [encodeName name]
+    f _ = []
+
 
 mapMapM :: Ord k => Monad m => (v -> m v') -> Map k v -> m (Map k v')
 mapMapM f = liftM M.fromList . mapM (\(k,v) -> (,) k `liftM` f v) . M.toList
@@ -98,11 +102,16 @@ encodeType TChar = "i8"
 encodeType TBool = "i1"
 encodeType TVoid = "void"
 encodeType (TConst t) = encodeType t
-encodeType (TFunction t params) = encodeType t++" ("++intercalate "," (map encodeFormal params)++")"
+encodeType (TFunction t params) = encodeType t++"("++intercalate "," (map (encodeFormal False) params)++")"
 encodeType (TArray len typ) = "["++show len++" x "++encodeType typ++"]"
 
-encodeFormal VarargParam = "..."
-encodeFormal (FormalParam typ _) = encodeType typ
+-- | Encode a formal parameter as a LLVM type (e.g. "i32") or type + name (as "i32 %param")
+encodeFormal :: Bool        -- ^ Include variable name for parameter lists?
+             -> FormalParam -- ^ Formal parameter
+             -> String
+encodeFormal True (FormalParam typ (Just name)) = encodeType typ++" %"++encodeName name
+encodeFormal _ (FormalParam typ _) = encodeType typ
+encodeFormal _ VarargParam = "..."
 
 cgDef name local def = case def of
   (ModuleDef decls) -> mapM_ (cgDecl name) decls
@@ -111,13 +120,13 @@ cgDef name local def = case def of
     tell (encodeType retT ++ " ")
     tell ("@"++encodeName name ++ " ")
     tell "("
-    tell (intercalate "," (map encodeFormal args))
+    tell (intercalate "," (map (encodeFormal True) args))
     tell ")"
     tell "{\n"
     cgFunBody code
     tell "}\n\n"
   (ExternalFunction _linkage ret args) -> do
-    tell ("declare "++encodeType ret++" @"++encodeName local++"("++intercalate "," (map encodeFormal args)++")\n")
+    tell ("declare "++encodeType ret++" @"++encodeName local++"("++intercalate "," (map (encodeFormal False) args)++")\n")
     tell ("@"++encodeName name++" = alias linker_private "++encodeType (TPtr (TFunction ret args))++" @"++encodeName local++"\n")
 
 cgFunBody = cgStmts

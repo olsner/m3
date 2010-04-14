@@ -1,6 +1,6 @@
 {-# LANGUAGE RankNTypes,FlexibleContexts,NoMonomorphismRestriction,TypeSynonymInstances #-}
 
-module TypeCheck (typecheck) where
+module TypeCheck (typecheck,maybeM) where
 
 import Control.Applicative hiding (Const)
 import Control.Monad.Identity
@@ -112,15 +112,22 @@ tcDef name def = traceM ("tcDef "++show name++": "++show def) $ case def of
     addBinding name (Var NonConst (TFunction ret args))
     return (ExternalFunction linkage ret args)
 
+maybeM :: Applicative m => (a -> m b) -> Maybe a -> m (Maybe b)
+maybeM f (Just x) = Just <$> f x
+maybeM _ Nothing = pure Nothing
+
 tcStmt :: MonadIO m => Type -> [FormalParam] -> Statement ExprF -> TC m (Statement TypedE)
 tcStmt ret args stmt = traceM ("tcStmt "++show stmt) $ case stmt of
-  (ReturnStmt e) -> ReturnStmt <$> tcExprAsType ret e
-  (ExprStmt e) -> ExprStmt <$> tcExpr e
-  ReturnStmtVoid -> return ReturnStmtVoid -- TODO Check that return type of function actually is TVoid
-  EmptyStmt -> return EmptyStmt
-  CompoundStmt [x] -> tcStmt ret args x
-  CompoundStmt xs -> CompoundStmt <$> mapM (tcStmt ret args) xs
-  VarDecl name typ x -> VarDecl name typ <$> inScope name (Var (case typ of TConst _ -> Const; _ -> NonConst) typ) (tcStmt ret args x)
+  (ReturnStmt e)     -> ReturnStmt <$> tcExprAsType ret e
+  (ExprStmt e)       -> ExprStmt <$> tcExpr e
+  ReturnStmtVoid     -> return ReturnStmtVoid -- TODO Check that return type of function actually is TVoid
+  EmptyStmt          -> return EmptyStmt
+  CompoundStmt [x]   -> tcStmt ret args x
+  CompoundStmt xs    -> CompoundStmt <$> mapM (tcStmt ret args) xs
+  VarDecl name (TConst typ) init x -> inScope name (Var Const typ) $
+    VarDecl name (TConst typ) <$> (Just <$> tcExprAsType typ (fromJust init)) <*> tcStmt ret args x
+  VarDecl name typ init x -> inScope name (Var NonConst typ) $
+    VarDecl name typ <$> maybeM (tcExprAsType typ) init <*> tcStmt ret args x
   IfStmt cond t f -> IfStmt <$> tcExprAsType TBool cond <*> tcStmt ret args t <*> tcStmt ret args f
 
 tcExprAsType :: MonadIO m => Type -> ExprF -> TC m TypedE

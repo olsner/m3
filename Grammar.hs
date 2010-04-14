@@ -62,11 +62,16 @@ pStatement = choice $
   ,ReturnStmt <$> (keyword "return" *> pExpression <* token Semicolon)
   ,ExprStmt <$> pExpression >>= \t -> t `seq` token Semicolon >> return t
   -- TODO Implement declarations of multiple variables in one statement
-  ,flip VarDecl <$> pType <*> pName <*> (token Semicolon >> CompoundStmt <$> many pStatement <* lookToken CloseBrace)
+  -- Note: This syntax defines the scope of a variable as "everything until the next closing brace. I this (really) correct?
+  -- TODO: What happens with e.g. if (foo) type var; !?
+  ,mkVarDecl <$> pType <*> sepBy1 ((,) <$> pName <*> optional pVarInitializer) (token Comma) <*> (token Semicolon >> CompoundStmt <$> many pStatement <* lookToken CloseBrace)
   ,CompoundStmt <$> inBraces (many pStatement)
   ,keyword "if" *> (IfStmt <$> inParens pExpression <*> pStatement <*> (fromMaybe EmptyStmt <$> optional pElse))
   ]
 
+mkVarDecl :: Show e => Type -> [(Name,Maybe e)] -> Statement e -> Statement e
+mkVarDecl typ vars stmt = foldr (uncurry (flip VarDecl typ)) stmt vars
+pVarInitializer = token Assignment *> pExpression
 pElse = keyword "else" >> pStatement
 
 pExpression = pLeftExpression <**> pExpressionSuffix

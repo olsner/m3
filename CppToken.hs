@@ -69,8 +69,6 @@ data Tok =
     | RightShift
     deriving (Show, Read, Eq, Ord)
 
-line n = setSourceLine (initialPos "hard-coded") n
-
 oneCharOperators = zip ";{}()[],.*&+-/!~|<>?:=" $
     [Semicolon
     ,OpenBrace

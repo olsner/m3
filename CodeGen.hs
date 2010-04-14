@@ -33,8 +33,11 @@ import AST
 import Counter
 import CppToken
 import SetWriter
+import TypeCheck (maybeM)
 
-type Locals = Set String
+data ValueKind = Variable | ConstExpr | AllocaPtr
+data Value = Value { valueKind :: ValueKind, valueType :: String, valueTextNoType :: String }
+type Locals = Map String Value
 type CGMT m = CounterT Int (StateT Locals (WriterT String m))
 type CGM a = forall m . (MonadIO m) => CGMT m a
 
@@ -44,20 +47,24 @@ fresh = printf "%%t%d" <$> getAndInc
 freshLabel :: CGM String
 freshLabel = printf ".label%d" <$> getAndInc
 
-withLocal :: String -> CGM a -> CGM a
-withLocal str m = do
+withLocal :: Name -> Value -> CGM a -> CGM a
+withLocal name val m = do
   s <- get
-  modify (S.insert str)
+  modify (M.insert (encodeName name) val)
   r <- m
   put s
   return r
-isLocal :: String -> CGM Bool
-isLocal str = gets (S.member str)
+getLocal :: Name -> CGM (Maybe Value)
+getLocal name = gets (M.lookup (encodeName name))
+
+mkValue :: ValueKind -> Type -> String -> Value
+mkValue k typ s = Value k (encodeType typ) s
+valueText v = valueType v++' ':valueTextNoType v
 
 runCGM :: Monad m => FormalParams -> CGMT m a -> WriterT String m a
-runCGM args = fmap fst . flip runStateT (S.fromList $ concatMap f args) . runCounterT 0
+runCGM args = fmap fst . flip runStateT (M.fromList $ concatMap f args) . runCounterT 0
   where
-    f (FormalParam _ (Just name)) = [encodeName name]
+    f (FormalParam typ (Just name)) = [(nm, mkValue ConstExpr typ ('%':nm))] where nm = encodeName name
     f _ = []
 
 
@@ -135,69 +142,91 @@ cgFunBody = cgStmts
 cgStmts :: [Statement TypedE] -> CGM ()
 cgStmts code = mapM_ cgStmt code
 
+infixl 1 =%
+line str = tell ('\t':str++"\n")
+value =% expr = line (valueTextNoType value++" = "++expr)
+alloca typ = "alloca "++encodeType typ
+load src = "load "++valueText src
+store src dst = line ("store "++valueText src++", "++valueText dst) >> return src
+ret val = line ("ret "++valueText val)
+valueTextList = intercalate ", " . map valueText
+call fun args = "call "++valueText fun++"("++valueTextList args++")"
+br target = line ("br label %"++target)
+brIf cond true false = line ("br "++valueText cond++", label %"++true++", label %"++false)
+label lbl m = tell (lbl++":\n") >> m
+
 cgStmt :: Statement TypedE -> CGM ()
 cgStmt stmt = case stmt of
   EmptyStmt -> return ()
-  (ReturnStmt e) -> tell . printf "ret %s\n" =<< cgTypedE e
-  (ReturnStmtVoid) -> tell "ret void\n"
+  (ReturnStmt e) -> ret =<< cgTypedE e
+  (ReturnStmtVoid) -> line "ret void"
   (ExprStmt expr) -> cgTypedE expr >> return ()
   CompoundStmt xs -> mapM_ cgStmt xs
-  (VarDecl name typ x) -> withLocal (encodeName name) $ do
-    tell ("%"++encodeName name++" = alloca "++encodeType typ++"\n")
-    cgStmt x
+  (VarDecl name typ init x) -> maybeM cgTypedE init >>= \initVal -> do
+      case typ of
+        (TConst _) -> withLocal name (fromJust initVal) $ cgStmt x
+        _          ->
+          let value = mkValue AllocaPtr (TPtr typ) ("%"++encodeName name) in
+          withLocal name value $ do
+            value =% alloca typ
+            maybeM (\initVal -> store initVal value) initVal
+            cgStmt x
   (IfStmt cond t f) -> do
     c <- cgTypedE cond
     tblock <- freshLabel
     fblock <- freshLabel
     end <- freshLabel
-    tell ("br "++c++", label %"++tblock++", label %"++fblock++"\n")
-    tell (tblock++":\n")
-    cgStmt t
-    tell ("br label %"++end++"\n"++fblock++":\n")
-    cgStmt f
-    tell ("br label %"++end++"\n"++end++":\n")
+    brIf c tblock fblock
+    label tblock $ do
+      cgStmt t
+      br end
+    label fblock $ do
+      cgStmt f
+      br end
+    label end (return ())
   --other -> tell ("; UNIMPL!!! "++show other++"\n")
 
-withFresh typ m = fresh >>= \r -> m r >> return (encodeType typ ++ " " ++ r)
+withFresh typ m = fresh >>= \r -> let v = mkValue Variable typ r in v <$ m v
 
 cgTypedE (TypedE t e) = cgExpr t e
--- TODO Somehow memoize the result so that Expr's with sharing have the same sharing - may require clever changes to Expr.
+cgExpr :: Type -> Expr TypedE -> CGM Value
 cgExpr typ e = case e of
-  (EBool b) -> return ("i1 "++if b then "1" else "0")
-  (EInt i) -> return ("i32 "++show i)
+  (EBool b) -> return (mkValue ConstExpr typ (if b then "1" else "0"))
+  (EInt i) -> return (mkValue ConstExpr typ (show i))
   (EFunCall fun@(TypedE funType _) args) -> do
     (fun_:args_) <- mapM cgTypedE (fun:args)
-    let funcall = "call "++fun_++"("++intercalate "," args_++")"++"\n"
+    let funcall = call fun_ args_
     let TPtr (TFunction retT _) = funType
     if retT == TVoid
-      then tell funcall >> return (error "void function result used by something! In CodeGen!") -- The return value should be guaranteed unused!
-      else withFresh retT $ \r -> tell (r ++ " = "++funcall)
+      then line funcall >> return (error "void function result used by something! In CodeGen!") -- The return value should be guaranteed unused!
+      else withFresh retT (=% funcall)
   (EVarRef name) -> do
-    let nm = encodeName name
-    local <- isLocal nm
-    return (encodeType typ++(if local then " %" else " @")++nm)
+    local <- getLocal name
+    case local of
+      (Just val) -> return val
+      _ -> return (mkValue ConstExpr typ ('@':encodeName name))
   (EArrToPtr (TypedE arrT@(TArray _ arrelem) arr)) -> do
     v <- cgExpr (TPtr arrT) arr
-    return (encodeType (TPtr arrelem)++" getelementptr ("++v++", i1 0, i1 0)")
-  (EDeref loc) -> withFresh typ $ \r -> do
+    return (mkValue ConstExpr (TPtr arrelem) ("getelementptr ("++valueText v++", i1 0, i1 0)"))
+  (EDeref loc) -> do
     loc' <- cgTypedE loc
-    tell (r++" = load "++loc'++"\n")
+    withFresh typ (=% load loc')
   (EAssignment (_,Assignment) lval rval) -> do
     let (TypedE _ (EDeref loc)) = lval
     lv <- cgTypedE loc
     rv <- cgTypedE rval
-    tell ("store "++rv++", "++lv++"\n")
-    return rv
+    store rv lv
   (EBinary op x y) -> do
     xres <- cgTypedE x
     yres <- cgTypedE y
-    withFresh typ $ \r -> tell (r++" = "++getBinopCode op typ++" "++xres++","++(unwords.tail.words) yres++"\n")
+    withFresh typ (=% getBinopCode op typ xres yres)
   other -> error ("Unimplemented expression: "++show other)
 
+icmp op x y = unwords ["icmp",op,valueText x++",",valueTextNoType y]
 getBinopCode (pos,Equal) typ = case typ of
-  TInt -> "icmp eq"
-  TBool -> "icmp eq"
-  TChar -> "icmp eq"
+  TInt -> icmp "eq"
+  TBool -> icmp "eq"
+  TChar -> icmp "eq"
   _ -> error (show pos++": Equal operator only supports ints, attempted on "++show typ)
 
 type SF a = CounterT Int (SetWriter (Map String Int)) a
@@ -231,7 +260,7 @@ getStringsDef (FunctionDef retT args code) = FunctionDef retT args <$> mapM getS
 getStringsDef def = return def
 getStringsStmt (ReturnStmt e) = ReturnStmt <$> getStringsTypedE e
 getStringsStmt (ExprStmt e) = ExprStmt <$> getStringsTypedE e
-getStringsStmt (VarDecl n t s) = VarDecl n t <$> getStringsStmt s
+getStringsStmt (VarDecl n t init s) = VarDecl n t <$> maybeM getStringsTypedE init <*> getStringsStmt s
 getStringsStmt (CompoundStmt ss) = CompoundStmt <$> mapM getStringsStmt ss
 getStringsStmt (IfStmt c t f) = IfStmt <$> getStringsTypedE c <*> getStringsStmt t <*> getStringsStmt f
 getStringsStmt s@(EmptyStmt) = return s

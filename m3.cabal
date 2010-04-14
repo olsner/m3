@@ -30,7 +30,7 @@ Executable m3
   
   -- Packages needed in order to build this package.
   Build-depends: base < 5,
-    parsec,
+    parsec < 3,
     mtl,
     containers,
     -- Only for FixF - that's exactly one newtype we need...

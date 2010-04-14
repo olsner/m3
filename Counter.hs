@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving,DeriveFunctor,FlexibleInstances,MultiParamTypeClasses,UndecidableInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving,FlexibleInstances,MultiParamTypeClasses,UndecidableInstances #-}
 
 module Counter (CounterT(CounterT), runCounterT, getAndInc) where
 

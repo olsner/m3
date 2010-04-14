@@ -28,14 +28,14 @@ parse path = do
       exitFailure
     Right tokens -> do
       let (res,rest) = runParser pUnit tokens
-      when (not (null rest)) $ do
+      if null rest then return res else do
         putStrLn "*** Parse left residue:"
         mapM_ print rest
         putStrLn "*** Full token stream:"
         mapM_ print (map snd tokens)
         putStrLn "*** (Partial) result:"
         print res
-      return res
+        return (error "Parse error")
 
 firstM :: Monad m => (a -> m (Maybe b)) -> [a] -> m (Maybe b)
 firstM f (x:xs) = do

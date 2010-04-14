@@ -43,5 +43,5 @@ Executable m3
   -- Extra tools (e.g. alex, hsc2hs, ...) needed to build the source.
   -- Build-tools:         
 
-  GHC-Options: -Wall -fno-warn-missing-signatures -fno-warn-unused-do-bind -fno-warn-name-shadowing
+  GHC-Options: -Wall -fno-warn-missing-signatures -fno-warn-name-shadowing
   

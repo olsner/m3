@@ -90,5 +90,5 @@ data Expr e =
 
 type ExprF = FixF Expr
 instance Show ExprF where
-  show (InF e) = show e
+  showsPrec d (InF e) = showsPrec (d+1) e
 

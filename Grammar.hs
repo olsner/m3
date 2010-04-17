@@ -37,7 +37,6 @@ pFormalParamList = do
   xs <- inParens . listOf . choice $ [pFormalParam, pVarargParam]
   guardMsg (validateFormalParams xs) "Invalid formal parameter list - vararg ellipsis must be last parameter."
   return xs
-pCompoundStatement = inBraces (many pStatement)
 
 pFormalParam = FormalParam <$> pType <*> optional pSimpleName
 pVarargParam = token Ellipsis >> return VarargParam
@@ -56,16 +55,18 @@ pType = pArraySuffix =<< choice
   ]
 pArraySuffix t = optional (snd <$> inBrackets integer) >>= maybe (return t) (pArraySuffix . flip TArray t)
 
+forceThenSemicolon t = t `seq` token Semicolon >> return t
+pCompoundStatement = inBraces (many pStatement)
 pStatement = choice $
   [token Semicolon $> EmptyStmt
-  ,keyword "return" >> token Semicolon >> return ReturnStmtVoid
-  ,ReturnStmt <$> (keyword "return" *> pExpression <* token Semicolon)
-  ,ExprStmt <$> pExpression >>= \t -> t `seq` token Semicolon >> return t
+  ,ReturnStmtVoid <$ (keyword "return" >> token Semicolon)
+  ,ReturnStmt <$> (keyword "return" *> pExpression >>= forceThenSemicolon)
+  ,ExprStmt <$> pExpression >>= forceThenSemicolon
   -- TODO Implement declarations of multiple variables in one statement
   -- Note: This syntax defines the scope of a variable as "everything until the next closing brace. I this (really) correct?
   -- TODO: What happens with e.g. if (foo) type var; !?
   ,mkVarDecl <$> pType <*> sepBy1 ((,) <$> pName <*> optional pVarInitializer) (token Comma) <*> (token Semicolon >> CompoundStmt <$> many pStatement <* lookToken CloseBrace)
-  ,CompoundStmt <$> inBraces (many pStatement)
+  ,CompoundStmt <$> pCompoundStatement
   ,keyword "if" *> (IfStmt <$> inParens pExpression <*> pStatement <*> (fromMaybe EmptyStmt <$> optional pElse))
   ]
 

@@ -12,15 +12,15 @@ import AST
 import CppToken
 import Parser
 
-none p = not . any p
 token t = satisfy ((== t) . snd)
 lookToken t = satisfyLook ((== t) . snd)
 
-pUnit = Unit <$> many pImport <*> (pModule <|> pFunction)
+pUnit = Unit <$> many pImport <*> (pModule <|> pFunction) <* eof
 
-pModule = keyword "module" >> (Decl <$> pName) <* token Semicolon <*> (ModuleDef <$> many pFunction) <* eof
+pModule = keyword "module" *> (Decl <$> pName) <* token Semicolon <*> (ModuleDef <$> many pFunction) <* eof
 
-pImport = keyword "import" >> pName <* token Semicolon
+pImport :: Parser Token Name
+pImport = keyword "import" *> pName <* token Semicolon
 pSimpleName = (\(_,nm) -> QualifiedName [nm]) <$> identifier
 pName = QualifiedName . map snd <$> sepBy1 identifier (token DoubleColon)
 
@@ -33,39 +33,38 @@ pFunction = choice
       <* token Semicolon)
   ]
 
-pFormalParamList = do
-  xs <- inParens . listOf . choice $ [pFormalParam, pVarargParam]
-  guardMsg (validateFormalParams xs) "Invalid formal parameter list - vararg ellipsis must be last parameter."
-  return xs
+pFormalParamList = inParens . listOf $ choice [pFormalParam, pVarargParam]
+  -- TODO Move somewhere - typechecker?
+  -- guardMsg (validateFormalParams xs) "Invalid formal parameter list - vararg ellipsis must be last parameter."
+  -- return xs
 
 pFormalParam = FormalParam <$> pType <*> optional pSimpleName
-pVarargParam = token Ellipsis >> return VarargParam
-validateFormalParams [] = True
-validateFormalParams xs = none (== VarargParam) (init xs)
+pVarargParam = VarargParam <$ token Ellipsis
 
 infixl 3 $>
 ($>) = flip (<$)
 
-pType = pArraySuffix =<< choice
+pType = pLeftType <**> pArraySuffix
+pLeftType = choice
   [keyword "void" $> TVoid
   ,keyword "int" $> TInt
   ,keyword "char" $> TChar
-  ,keyword "const" >> (TConst <$> pType)
+  ,keyword "const" *> (TConst <$> pType)
   ,inBrackets (TPtr <$> pType)
   ]
-pArraySuffix t = optional (snd <$> inBrackets integer) >>= maybe (return t) (pArraySuffix . flip TArray t)
+pArraySuffix = maybe id TArray <$> optional (snd <$> inBrackets integer)
 
 forceThenSemicolon t = t `seq` token Semicolon >> return t
 pCompoundStatement = inBraces (many pStatement)
 pStatement = choice $
   [token Semicolon $> EmptyStmt
-  ,ReturnStmtVoid <$ (keyword "return" >> token Semicolon)
-  ,ReturnStmt <$> (keyword "return" *> pExpression >>= forceThenSemicolon)
-  ,ExprStmt <$> pExpression >>= forceThenSemicolon
+  ,ReturnStmtVoid <$ (keyword "return" *> token Semicolon)
+  ,ReturnStmt <$> (keyword "return" *> pExpression <* token Semicolon)
+  ,ExprStmt <$> pExpression <* token Semicolon
   -- TODO Implement declarations of multiple variables in one statement
   -- Note: This syntax defines the scope of a variable as "everything until the next closing brace. I this (really) correct?
   -- TODO: What happens with e.g. if (foo) type var; !?
-  ,mkVarDecl <$> pType <*> sepBy1 ((,) <$> pName <*> optional pVarInitializer) (token Comma) <*> (token Semicolon >> CompoundStmt <$> many pStatement <* lookToken CloseBrace)
+  ,mkVarDecl <$> pType <*> sepBy1 ((,) <$> pName <*> optional pVarInitializer) (token Comma) <*> (token Semicolon *> (CompoundStmt <$> many pStatement <* lookToken CloseBrace))
   ,CompoundStmt <$> pCompoundStatement
   ,keyword "if" *> (IfStmt <$> inParens pExpression <*> pStatement <*> (fromMaybe EmptyStmt <$> optional pElse))
   ]
@@ -73,7 +72,7 @@ pStatement = choice $
 mkVarDecl :: Show e => Type -> [(Name,Maybe e)] -> Statement e -> Statement e
 mkVarDecl typ vars stmt = foldr (uncurry (flip VarDecl typ)) stmt vars
 pVarInitializer = token Assignment *> pExpression
-pElse = keyword "else" >> pStatement
+pElse = keyword "else" *> pStatement
 
 pExpression = pLeftExpression <**> pExpressionSuffix
 
@@ -96,7 +95,7 @@ pExpressionSuffix = choice
   [flip <$> (eAssignment <$> pAssignmentOperator) <*> pExpression
   ,flip <$> (eBinop <$> pBinop) <*> pExpression
   ,(InF .) <$> flip EFunCall <$> inParens (listOf pExpression)
-  ,return id
+  ,pure id
   ]
 
 pBinop = choice

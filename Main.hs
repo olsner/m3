@@ -26,16 +26,16 @@ parse path = do
     Left err -> do
       putStrLn "Error in lexical analysis:" >> print err
       exitFailure
-    Right tokens -> do
-      let (res,rest) = runParser pUnit tokens
-      if null rest then return res else do
-        putStrLn "*** Parse left residue:"
-        mapM_ print rest
-        putStrLn "*** Full token stream:"
-        mapM_ print (map snd tokens)
-        putStrLn "*** (Partial) result:"
-        print res
-        return (error "Parse error")
+    Right tokens ->
+      case runParser pUnit tokens of
+        (Right res, []) -> return res
+        (res, rest) -> do
+          let msg = case res of Left err -> err; _ -> ""
+          putStrLn "*** Parse left residue:"
+          mapM_ print rest
+          putStrLn "*** Full token stream:"
+          mapM_ print (map snd tokens)
+          return (error ("Parse error "++msg))
 
 firstM :: Monad m => (a -> m (Maybe b)) -> [a] -> m (Maybe b)
 firstM f (x:xs) = do
@@ -74,7 +74,10 @@ processImport name = ifNotLoaded name $ do
 
 parseName name = case lexCpp "cmd-line" name of
   Left err -> putStrLn "Error: Can't parse name:" >> print err >> exitFailure
-  Right tokens -> return (fst $ runParser pName tokens)
+  Right tokens -> case fst (runParser pName tokens) of
+    Left err -> putStrLn "Error: Can't parse name:" >> print err >> exitFailure
+    Right name -> return name
+ 
 
 main = mapM_ (doMain <=< parseName) =<< getArgs
 

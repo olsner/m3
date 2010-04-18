@@ -31,6 +31,9 @@ instance (Monad m) => Applicative (TC m) where
 
 runTC m mods = runStateT m (TCState { bindings = M.empty, modules = mods })
 
+tcError :: String -> TC m a
+tcError msg = error msg
+
 modifyBindings f = modify (\s -> s { bindings = f (bindings s) })
 modifyModules f = modify (\s -> s { modules = f (modules s) })
 

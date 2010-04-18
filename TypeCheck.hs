@@ -87,7 +87,7 @@ withArg _ m = m
 tcUnitByName :: MonadIO m => Name -> TC m (Unit TypedE)
 tcUnitByName name = do
   res <- getModule name -- errors if module not found - it must be found
-  liftIO (printf "tcUnitByName: %s: %s\n" (show name) (either (const "not yet typechecked") (const "already typechecked") res))
+  _ <- liftIO (printf "tcUnitByName: %s: %s\n" (show name) (either (const "not yet typechecked") (const "already typechecked") res))
   case res of
     Left untyped -> tcUnit name untyped
     Right typed -> return typed
@@ -105,10 +105,14 @@ tcDecl :: MonadIO m => Name -> Decl ExprF -> TC m (Decl TypedE)
 tcDecl name decl@(Decl local def) = traceM (printf "tcDecl %s %s %s" (show name)(show local) (show decl)) $
   Decl local <$> tcDef (qualifyName name local) def
 
+invalidFormalParams [] = False
+invalidFormalParams xs = any (== VarargParam) (init xs)
+
 tcDef :: MonadIO m => Name -> Def ExprF -> TC m (Def TypedE)
 tcDef name def = traceM ("tcDef "++show name++": "++show def) $ case def of
   (ModuleDef decls) -> ModuleDef <$> mapM (tcDecl name) (decls)
   (FunctionDef retT args code) -> do
+    when (invalidFormalParams args) (tcError "Malformed formal parameter list")
     addBinding name (Var NonConst (TFunction retT args))
     FunctionDef retT args <$> foldr withArg (mapM (tcStmt retT args) code) args
   (ExternalFunction linkage ret args) -> do

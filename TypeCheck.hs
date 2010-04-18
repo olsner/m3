@@ -1,4 +1,4 @@
-{-# LANGUAGE RankNTypes,FlexibleContexts,NoMonomorphismRestriction,TypeSynonymInstances #-}
+{-# LANGUAGE RankNTypes,FlexibleContexts,NoMonomorphismRestriction,TypeSynonymInstances,PatternGuards #-}
 
 module TypeCheck (typecheck,maybeM) where
 
@@ -123,7 +123,8 @@ tcStmt :: MonadIO m => Type -> [FormalParam] -> Statement ExprF -> TC m (Stateme
 tcStmt ret args stmt = traceM ("tcStmt "++show stmt) $ case stmt of
   (ReturnStmt e)     -> ReturnStmt <$> tcExprAsType ret e
   (ExprStmt e)       -> ExprStmt <$> tcExpr e
-  ReturnStmtVoid     -> return ReturnStmtVoid -- TODO Check that return type of function actually is TVoid
+  ReturnStmtVoid | TVoid <- ret -> return ReturnStmtVoid
+  ReturnStmtVoid     -> tcError ("void return in function returning "++show ret)
   EmptyStmt          -> return EmptyStmt
   CompoundStmt [x]   -> tcStmt ret args x
   CompoundStmt xs    -> CompoundStmt <$> mapM (tcStmt ret args) xs

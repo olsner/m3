@@ -335,8 +335,8 @@ getStringsExpr e = error ("Unhandled expression in string finder: "++show e)
 showStringLLVM xs = "\""++(f =<< xs)++"\""
   where
     f x
-      | isPrint x = [x]
-      | otherwise = "\\" ++ printf "%02x" (ord x)
-writeStrings = mapM (tell . makeString) . M.toList
+      | elem x "\"" || not (isPrint x) = "\\" ++ printf "%02x" (ord x)
+      | otherwise = [x]
+writeStrings = mapM_ (tell . makeString) . M.toList
   where
     makeString (str,i) = printf "@.STR%d = internal constant [%d x i8] c%s\n" i (length str+1) (showStringLLVM (str++"\0"))

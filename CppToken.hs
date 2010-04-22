@@ -67,6 +67,11 @@ data Tok =
     
     | LeftShift
     | RightShift
+
+    -- Pre- or postfix depending on parse
+    | Decrement
+    | Increment
+
     deriving (Show, Read, Eq, Ord)
 
 oneCharOperators = zip ";{}()[],.*&+-/!~|<>?:=" $
@@ -93,7 +98,7 @@ oneCharOperators = zip ";{}()[],.*&+-/!~|<>?:=" $
     ,SingleColon
     ,Assignment]
 
-multiCharOperators =
+multiCharOperators = postfixOperators++
     [("&&",ShortcutAnd)
     ,("||",ShortcutOr)
     ,("::",DoubleColon)
@@ -106,8 +111,13 @@ multiCharOperators =
     ,("<<",LeftShift)
     ,(">>",RightShift)]
 
+postfixOperators =
+    [("--",Decrement)
+    ,("++",Increment)]
+
 reservedWords =
-    ["char"
+    ["bool"
+    ,"char"
     ,"class"
     ,"const"
     ,"double"
@@ -132,7 +142,8 @@ reservedWords =
     ,"unsigned"
     ,"using"
     ,"void"
-    ,"volatile"]
+    ,"volatile"
+    ,"while"]
 
 swap (x,y) = (y,x)
 printCanonically Semicolon = ";\n"

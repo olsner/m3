@@ -40,6 +40,7 @@ data Show e => Statement e =
   | VarDecl Name Type (Maybe e) (Statement e)
   | CompoundStmt [Statement e]
   | IfStmt e (Statement e) (Statement e)
+  | WhileStmt e (Statement e)
   deriving (Show,Eq)
 
 type CompoundStatement e = [Statement e]
@@ -56,6 +57,7 @@ data Def e =
     ModuleDef [Decl e]
   | FunctionDef { funReturnType :: Type, funArgs :: FormalParams, funCode :: CompoundStatement e }
   | ExternalFunction { funLinkage :: Maybe String, funReturnType :: Type, funArgs :: FormalParams }
+  | VarDef Type (Maybe e)
 
   deriving (Show,Eq)
 
@@ -79,12 +81,14 @@ data Expr e =
   | EFunCall e [e]
   | EBinary Token e e
   | EUnary Token e
+  | EPostfix Token e
   | EConditional e e e -- ^ ?: expressions: condition, true-value, false-value
   | EAssignment Token e e
   | EString String
   | EInt Integer
   | EBool Bool
   | EDeref e -- ^ Doubles as lvalue-to-rvalue conversion, inserted by type checking. All variables are pointers, surprisingly
+  | EArrayIndex e {- ^ index -} e {- ^ array -}
   | EArrToPtr e
   deriving (Show,Eq)
 

@@ -132,10 +132,19 @@ cgDef name local def = case def of
     tell ")"
     tell "{\n"
     cgFunBody code
+    line "unreachable"
     tell "}\n\n"
   (ExternalFunction _linkage ret args) -> do
     tell ("declare "++encodeType ret++" @"++encodeName local++"("++intercalate "," (map (encodeFormal False) args)++")\n")
     tell ("@"++encodeName name++" = alias linker_private "++encodeType (TPtr (TFunction ret args))++" @"++encodeName local++"\n")
+  (VarDef (TConst t) e) -> do
+    res <- runCGM [] (maybeM cgTypedE e)
+    let initVal = case res of
+          Just e -> valueText e
+          Nothing -> "undef"
+    tell ("@"++encodeName name++" = linker_private constant "++initVal++"\n")
+  (VarDef t Nothing) -> do
+    tell ("@"++encodeName name++" = global linker_private "++encodeType t++" undef\n")
 
 cgFunBody = cgStmts
 
@@ -154,6 +163,8 @@ call fun args = "call "++valueText fun++"("++valueTextList args++")"
 br target = line ("br label %"++target)
 brIf cond true false = line ("br "++valueText cond++", label %"++true++", label %"++false)
 label lbl m = tell (lbl++":\n") >> m
+getelementptr base xs = "getelementptr "++valueText base++","++valueTextList xs
+zero = mkValue ConstExpr TBool "0"
 
 cgStmt :: Statement TypedE -> CGM ()
 cgStmt stmt = case stmt of
@@ -184,6 +195,18 @@ cgStmt stmt = case stmt of
       cgStmt f
       br end
     label end (return ())
+  (WhileStmt cond body) -> do
+    startCond <- freshLabel
+    start <- freshLabel
+    end <- freshLabel
+    br startCond
+    label startCond $ do
+      c <- cgTypedE cond
+      brIf c start end
+    label start $ do
+      cgStmt body
+      br startCond
+    label end (return ())
   --other -> tell ("; UNIMPL!!! "++show other++"\n")
 
 withFresh typ m = fresh >>= \r -> let v = mkValue Variable typ r in v <$ m v
@@ -205,9 +228,15 @@ cgExpr typ e = case e of
     case local of
       (Just val) -> return val
       _ -> return (mkValue ConstExpr typ ('@':encodeName name))
-  (EArrToPtr (TypedE arrT@(TArray _ arrelem) arr)) -> do
+  (EArrToPtr (TypedE arrT arr)) -> do
+    let (arrT',arrelem) = case arrT of
+          (TArray _ arrelem) -> (arrT, arrelem)
+          (TPtr arrT@(TArray _ arrelem)) -> (arrT, arrelem)
     v <- cgExpr (TPtr arrT) arr
-    return (mkValue ConstExpr (TPtr arrelem) ("getelementptr ("++valueText v++", i1 0, i1 0)"))
+    lift (liftIO (printf "EArrToPtr: %s -> %s\n" (show e) (show typ)))
+    case valueKind v of
+      ConstExpr -> return (mkValue ConstExpr (TPtr arrelem) ("getelementptr ("++valueText v++", i1 0, i1 0)"))
+      k -> withFresh (TPtr arrelem) (=% getelementptr v [zero, zero])
   (EDeref loc) -> do
     loc' <- cgTypedE loc
     withFresh typ (=% load loc')
@@ -219,15 +248,35 @@ cgExpr typ e = case e of
   (EBinary op x y) -> do
     xres <- cgTypedE x
     yres <- cgTypedE y
-    withFresh typ (=% getBinopCode op typ xres yres)
+    withFresh typ (=% getBinopCode (snd op) (fst op) typ xres yres)
+  (EArrayIndex arr@(TypedE (TPtr elem) _) ix) -> do
+    arr' <- cgTypedE arr
+    ix' <- cgTypedE ix
+    elptr <- withFresh (TPtr elem) (=% getelementptr arr' [ix'])
+    withFresh elem (=% load elptr)
+  (EPostfix op lval) -> do
+    let (TypedE _ (EDeref loc)) = lval
+    lv <- cgTypedE loc
+    val <- withFresh typ (=% load lv)
+    res <- cgPostfixOp op typ val
+    store res lv
+    return val
   other -> error ("Unimplemented expression: "++show other)
 
 icmp op x y = unwords ["icmp",op,valueText x++",",valueTextNoType y]
-getBinopCode (pos,Equal) typ = case typ of
-  TInt -> icmp "eq"
-  TBool -> icmp "eq"
-  TChar -> icmp "eq"
-  _ -> error (show pos++": Equal operator only supports ints, attempted on "++show typ)
+cmpBinop tok op pos typ = case typ of 
+  TInt -> icmp op
+  TBool -> icmp op
+  TChar -> icmp op
+  --TFloat -> fcmp op
+  _ -> error (show pos++": "++show tok++" operator only supports ints, attempted on "++show typ)
+getBinopCode t = case t of
+  Equal -> cmpBinop t "eq"
+  NotEqual -> cmpBinop t "ne"
+  LessThan -> cmpBinop t "slt"
+
+cgPostfixOp (_,Decrement) typ val = withFresh typ $ (=% "sub "++valueText val++", 1")
+cgPostfixOp (_,Increment) typ val = withFresh typ $ (=% "add "++valueText val++", 1")
 
 type SF a = CounterT Int (SetWriter (Map String Int)) a
 runStringFinder :: SF a -> (a,Map String Int)
@@ -263,6 +312,7 @@ getStringsStmt (ExprStmt e) = ExprStmt <$> getStringsTypedE e
 getStringsStmt (VarDecl n t init s) = VarDecl n t <$> maybeM getStringsTypedE init <*> getStringsStmt s
 getStringsStmt (CompoundStmt ss) = CompoundStmt <$> mapM getStringsStmt ss
 getStringsStmt (IfStmt c t f) = IfStmt <$> getStringsTypedE c <*> getStringsStmt t <*> getStringsStmt f
+getStringsStmt (WhileStmt c s) = WhileStmt <$> getStringsTypedE c <*> getStringsStmt s
 getStringsStmt s@(EmptyStmt) = return s
 getStringsStmt s@(ReturnStmtVoid) = return s
 
@@ -273,6 +323,9 @@ getStringsTypedE (TypedE t e) = TypedE t <$> getStringsExpr e
 getStringsExpr (EFunCall fun args) = EFunCall <$> getStringsTypedE fun <*> mapM getStringsTypedE args
 getStringsExpr (EAssignment op lval rval) = EAssignment op <$> getStringsTypedE lval <*> getStringsTypedE rval
 getStringsExpr (EBinary op x y) = EBinary op <$> getStringsTypedE x <*> getStringsTypedE y
+getStringsExpr (EPostfix op lval) = EPostfix op <$> getStringsTypedE lval
+getStringsExpr (EArrToPtr e) = EArrToPtr <$> getStringsTypedE e
+getStringsExpr (EArrayIndex e ix) = EArrayIndex <$> getStringsTypedE e <*> getStringsTypedE ix
 getStringsExpr (EDeref e) = EDeref <$> getStringsTypedE e
 getStringsExpr e@(EVarRef _) = return e
 getStringsExpr e@(EInt _) = return e

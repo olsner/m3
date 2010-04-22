@@ -14,11 +14,12 @@ import Data.Map (Map)
 import qualified Data.Map as M
 
 import Text.Printf
+import Text.ParserCombinators.Parsec.Pos
 
 import AST
 import CppToken
 
-data VarType = Const | NonConst deriving (Show)
+data VarType = Const | Global | NonConst deriving (Show)
 data Binding = Var VarType Type | Alias Name deriving (Show)
 type ModBinding = Either (Unit ExprF) (Unit TypedE)
 type ModMap = Map Name ModBinding
@@ -76,6 +77,7 @@ withDef name local def = traceM (printf "withDef %s local %s: %s" (show name) (s
   (ModuleDef decls) -> withDecls name decls
   (FunctionDef retT args _) -> inScope name (Var NonConst (TFunction retT args)) . inScope local (Alias name)
   (ExternalFunction _ ret args) -> inScope name (Var NonConst (TFunction ret args)) . inScope local (Alias name)
+  (VarDef typ _) -> inScope name (Var Global typ) . inScope local (Alias name)
 
 withImport name m = do
   unit <- tcUnitByName name
@@ -118,6 +120,12 @@ tcDef name def = traceM ("tcDef "++show name++": "++show def) $ case def of
   (ExternalFunction linkage ret args) -> do
     addBinding name (Var NonConst (TFunction ret args))
     return (ExternalFunction linkage ret args)
+  (VarDef typ e) -> do
+    let typ' = case typ of
+          TConst t -> t
+          _ -> typ
+    addBinding name (Var Global typ')
+    VarDef typ <$> maybeM (tcExprAsType typ') e
 
 maybeM :: Applicative m => (a -> m b) -> Maybe a -> m (Maybe b)
 maybeM f (Just x) = Just <$> f x
@@ -137,18 +145,28 @@ tcStmt ret args stmt = traceM ("tcStmt "++show stmt) $ case stmt of
   VarDecl name typ init x -> inScope name (Var NonConst typ) $
     VarDecl name typ <$> maybeM (tcExprAsType typ) init <*> tcStmt ret args x
   IfStmt cond t f -> IfStmt <$> tcExprAsType TBool cond <*> tcStmt ret args t <*> tcStmt ret args f
+  WhileStmt cond body -> WhileStmt <$> tcExprAsType TBool cond <*> tcStmt ret args body
+
+implicitlyConvertType to orig@(TypedE from e')
+  | to == from = Just orig
+  | TInt <- from, TBool <- to = Just (TypedE TBool (EBinary (initialPos "<generated>",NotEqual) orig (TypedE TInt (EInt 0))))
+  | TConst from' <- from, Just new <- implicitlyConvertType to (TypedE from' e') = Just new
+  | TArray _ t <- from, TPtr t <- to, EDeref lval <- e' = Just (TypedE to (EArrToPtr lval))
+  | otherwise = Nothing
 
 tcExprAsType :: MonadIO m => Type -> ExprF -> TC m TypedE
 tcExprAsType expT e = do
   typed@(TypedE t _) <- tcExpr e
-  if not (t == expT) then error ("Expression "++show typed++" not of expected type "++show expT++" but "++show t) else return typed
+  case implicitlyConvertType expT typed of
+    Just typed' -> return typed'
+    Nothing -> tcError ("Expression "++show typed++" not of expected type "++show expT++" but "++show t++", and no implicit conversions were available")
 
 tcParams :: MonadIO m => [FormalParam] -> [ExprF] -> TC m [TypedE]
 tcParams (FormalParam typ _:ps) (x:xs) = liftM2 (:) (tcExprAsType typ x) (tcParams ps xs)
 tcParams [VarargParam]          xs     = mapM tcExpr xs
 tcParams (VarargParam:_)        _      = error "Vararg param in non-last position. The type-checker should have caught this already!"
 tcParams []                     []     = return []
-tcParams _                      _      = error "Argument number mismatch in code-generator. The type-checker should have caught this already!"
+tcParams formal                 actual = tcError ("Argument number mismatch. Remaining formals: "++show formal++", actuals: "++show actual)
 
 tcExpr :: MonadIO m => ExprF -> TC m TypedE
 tcExpr e = case outF e of
@@ -179,6 +197,26 @@ tcExpr e = case outF e of
     (res,op2type) <- binopTypeRule (snd op) t
     ty <- tcExprAsType op2type y
     return (TypedE res (EBinary op tx ty))
+  (EArrayIndex arr ix) -> do
+    arr'@(TypedE arrT _) <- tcExpr arr
+    ix' <- tcExprAsType TInt ix
+    elemType <- case arrT of
+          TPtr x -> return x
+          TArray _ elem -> return elem
+          _ -> tcError ("Indexing performed on non-indexable type "++show arrT)
+    return (TypedE elemType (EArrayIndex arr' ix'))
+  (EPostfix op e) -> do
+    -- must be an lvalue
+    e@(TypedE typ ptrExpr) <- tcExpr e
+    case ptrExpr of
+      (EDeref _) -> return ()
+      _ -> tcError ("Invalid postfix operator on non-lvalue "++show e)
+    return (TypedE typ (EPostfix op e))
+  (EDeref ptr) -> do
+    e@(TypedE (TPtr typ) _) <- tcExpr ptr
+    return (TypedE typ (EDeref e))
   other -> error ("tcExpr: Unknown expression "++show other)
 
 binopTypeRule Equal op1type = return (TBool, op1type) -- TODO Also needs to check that op1type is supported by the operator
+binopTypeRule LessThan op1type = return (TBool, op1type) -- TODO Also needs to check that op1type is supported by the operator
+binopTypeRule other _ = tcError ("Unhandled binary operator: "++show other)

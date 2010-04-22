@@ -30,12 +30,13 @@ parse path = do
       case runParser pUnit tokens of
         (Right res, []) -> return res
         (res, rest) -> do
-          let msg = case res of Left err -> err; _ -> ""
-          putStrLn "*** Parse left residue:"
-          mapM_ print rest
-          putStrLn "*** Full token stream:"
-          mapM_ print (map snd tokens)
-          return (error ("Parse error "++msg))
+          putStrLn "*** Parse left residue (only 10 tokens shown):"
+          mapM_ print (take 10 rest)
+          --putStrLn "*** Full token stream:"
+          --mapM_ print (map snd tokens)
+          let msg = case res of Left err -> err; _ -> show res
+          putStrLn ("Parse error "++msg)
+          exitFailure
 
 firstM :: Monad m => (a -> m (Maybe b)) -> [a] -> m (Maybe b)
 firstM f (x:xs) = do

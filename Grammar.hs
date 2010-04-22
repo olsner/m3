@@ -56,7 +56,7 @@ pArraySuffix = maybe id TArray <$> optional (snd <$> inBrackets integer)
 
 forceThenSemicolon t = t `seq` token Semicolon >> return t
 pCompoundStatement = inBraces (many pStatement)
-pStatement = choice $
+pStatement = choice
   [token Semicolon $> EmptyStmt
   ,ReturnStmtVoid <$ (keyword "return" *> token Semicolon)
   ,ReturnStmt <$> (keyword "return" *> pExpression <* token Semicolon)

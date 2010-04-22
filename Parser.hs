@@ -4,6 +4,7 @@ module Parser
   (Parser,
   runParser,
   onFail,
+  commit,
   next,
   satisfy,
   eof,
@@ -16,13 +17,16 @@ module Parser
   choice,
   guardMsg,
   satisfyLook,
-  lookNext)
+  lookNext,
+  failParse)
   where
 
 import Control.Applicative
 import Control.Arrow
 
 import Control.Monad.State
+
+import Debug.Trace
 
 newtype Parser t a = P { unP :: [t] -> (Either String a, [t]) }
 
@@ -53,6 +57,10 @@ instance Applicative (Parser t) where
         (Right x, ts') -> (Right (f x), ts')
         (Left e, ts') -> (Left e, ts')
       -- first (Right . f) $ runParser pa ts
+
+commit (P p) = P $ \ts -> case p ts of
+  (Left e, ts) -> trace ("commit: "++e) (error e, ts)
+  (Right x, ts) -> (Right x, ts)
 
 failParse e = P $ \ts -> (Left e, ts)
 

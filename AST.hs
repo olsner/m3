@@ -29,7 +29,7 @@ importedUnits units name = snd $ execRWS (go name) units S.empty
     add name = do
       modify (S.insert name)
       imps <- asks (unitImports . fromJust . M.lookup name)
-      mapM go imps
+      mapM_ go imps
       tell [name]
 
 data Show e => Statement e =

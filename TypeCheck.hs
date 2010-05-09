@@ -70,7 +70,7 @@ typecheck name = do
   snd . M.mapEither id . modules . snd <$> runTC (tcUnitByName name) mods
 
 traceM :: MonadIO m => String -> m a -> m a
---traceM str m = liftIO (putStrLn str) >> m <* liftIO (putStr (str++": done\n"))
+--traceM str m = liftIO (putStrLn str) >> m >>= \x -> liftIO (putStr (str++": done\n")) >> return x
 traceM = flip const
 
 withUnitImported (Unit _ decl) = withDecl (QualifiedName []) decl

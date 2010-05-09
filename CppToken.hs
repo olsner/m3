@@ -22,6 +22,8 @@ data Tok =
     | CloseParen
     | OpenBracket
     | CloseBracket
+    | OpenTypeBracket
+    | CloseTypeBracket
     | Comma
     
     | DoubleColon
@@ -46,8 +48,8 @@ data Tok =
     -- Logic operators
     | ShortcutAnd
     | ShortcutOr
-    | LogicalNot
-    | Complement
+    | LogicalNot -- ^ the ! operator (logical not)
+    | Complement -- ^ the ~ operator (bitwise not/complement)
     | Or
     
     | LessThan
@@ -64,6 +66,7 @@ data Tok =
     
     -- Assignment =
     | Assignment
+    | PlusAssign
     
     | LeftShift
     | RightShift
@@ -109,11 +112,18 @@ multiCharOperators = postfixOperators++
     ,("==",Equal)
     ,("!=",NotEqual)
     ,("<<",LeftShift)
-    ,(">>",RightShift)]
+    ,(">>",RightShift)
+    ,("+=",PlusAssign)
+    ,("<[",OpenTypeBracket)
+    ,("]>",CloseTypeBracket)
+    ]
 
 postfixOperators =
     [("--",Decrement)
     ,("++",Increment)]
+
+unaryOperators =
+    [Asterix, Ampersand, Plus, Minus, LogicalNot, Complement]
 
 reservedWords =
     ["bool"

@@ -44,7 +44,8 @@ addBinding name bind = do
   modifyBindings (M.insert name bind)
   --liftIO . print =<< gets bindings
 getBinding name = do
-  r <- fromMaybe (error ("getBinding "++show name++": Name not found")) . M.lookup name <$> gets bindings
+  bs <- gets bindings
+  let r = fromMaybe (error ("getBinding "++show name++": Name not found\n"++unlines (map show (M.toList bs)))) (M.lookup name bs)
   case r of
     (Alias alias) -> getBinding alias
     _             -> return (name,r)

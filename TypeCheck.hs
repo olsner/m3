@@ -229,8 +229,16 @@ tcExpr e = case outF e of
   ENullPtr -> return (TypedE TNullPtr ENullPtr)
   other -> error ("tcExpr: Unknown expression "++show other)
 
-binopTypeRule Equal op1type = return (TBool, op1type) -- TODO Also needs to check that op1type is supported by the operator
-binopTypeRule LessThan op1type = return (TBool, op1type) -- TODO Also needs to check that op1type is supported by the operator
-binopTypeRule other _ = tcError ("Unhandled binary operator: "++show other)
+relopRule x = return (TBool, x)
+-- FIXME This only handles pointer arithmetic where the *right-hand* argument is a pointer, not the flipped one...
+additiveRule TInt = return (TInt,TInt)
+additiveRule (TPtr t) = return (TPtr t, TInt)
+
+binopTypeRule Equal = relopRule
+binopTypeRule LessThan = relopRule
+binopTypeRule GreaterOrEqual = relopRule
+binopTypeRule Plus = additiveRule
+binopTypeRule Minus = additiveRule
+binopTypeRule other = \_ -> tcError ("Unhandled binary operator: "++show other)
 
 tcUnary LogicalNot = tcExprAsType TBool

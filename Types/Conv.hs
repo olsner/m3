@@ -5,6 +5,7 @@ module Types.Conv (implicitConversions) where
 import Prelude hiding ((.),id)
 import Control.Category
 
+import Data.Maybe
 import Data.Monoid
 
 import qualified Data.Map as M
@@ -29,23 +30,36 @@ instance (ShowType (a -> b)) => Show (a -> b) where
   show f = '<' : showType f ++ ">"
 
 type Conv = TypedE -> TypedE
+-- | Maybe monoid returning zero or one non-Nothing value, erroring instead of
+-- appending two values.
+newtype One a = One { getOne :: Maybe a }
+instance Monoid (One a) where
+  mempty = One Nothing
+  mappend x y = case getOne x of
+    Nothing -> y
+    Just _ -> case getOne y of
+      Nothing -> x
+      Just _ -> error "Two Just merged by One"
 -- Search: find paths from a to b, returning some kind of evidence of the path afterwards
 -- A path from a to b to c should be able to reuse b->c information in the search from a to b (in the form of the evidence?)
-newtype Search c a b = Search { runSearch :: a -> [(b,b -> a -> c)] }
+newtype Search c a b = Search { runSearch :: a -> b -> One c }
+instance Monoid (Search c a b) where
+  mempty = Search mempty
+  mappend (Search x) (Search y) = Search (mappend x y)
 type ConvF = Search (TypedE -> TypedE) Type Type
 
 concatMapMap f = M.toList . M.fromList . concat . map f
 
---runSearch :: Search c a b -> a -> [(b,b -> a -> c)]
---runSearch (Search f) = f
-
 firstOf :: Show b => Ord b => [Search c a b] -> Search c a b
-firstOf (Search f:xs) = Search $ \a ->
-  case f a of [] -> runSearch (oneOf xs) a; xs -> xs
-firstOf []     = Search (const [])
+firstOf (Search f:xs) = Search $ \from to ->
+  case getOne (f from to) of Nothing -> runSearch (oneOf xs) from to; just -> One just
+firstOf []     = mempty
 
 -- Combine all possible conversions in this level. *But* don't allow duplicate
 -- types...
+oneOf :: [Search c a b] -> Search c a b
+oneOf = mconcat
+{-
 oneOf :: Show b => Ord b => [Search c a b] -> Search c a b
 oneOf xs = Search (snd . go xs)
   where
@@ -53,12 +67,14 @@ oneOf xs = Search (snd . go xs)
     go [] _ = (S.empty, [])
     g x@(typ,_) (seen,rest) = case S.member typ seen of
       True -> error ("Duplicate possible type: "++show typ)
-      False -> (S.insert typ seen, x:rest)
+      False -> (S.insert typ seen, x:rest)-}
 --      let xs = f a in
 --      if any (flip S.member alreadySeen . fst) xs then error "Duplicate possible conversions..." else xs++go fs (S.union alreadySeen (S.fromList (map fst xs))) a
 
 nothingOr :: ConvF -> ConvF
-nothingOr f = oneOf [f, Search (\x -> [(x,(\_ _ e -> e))])]
+nothingOr (Search f) = \from to -> case f from to of
+  One Nothing -> One (Just id)
+  res -> res
 
 one = TypedE TInt (EInt 1)
 zero = TypedE TInt (EInt 0)
@@ -88,7 +104,7 @@ ptrNotNull a b = error ("ptrNotNull: to "++show a++" from "++show b)
 arrToPtr to from expr = TypedE to (EArrToPtr expr)
 
 qualificationConv = Search $ \t -> case t of
-  TPtr (TFunction _ _) -> []
+  TPtr (TFunction _ _) -> mempty
   TPtr pointee -> [(TPtr (TConst pointee),retype)]
   (TFunction _ _) -> []
   t -> [(TConst t,retype)]
@@ -126,7 +142,8 @@ Search y <> Search x = Search $ \t ->
       (t2,(\to from -> h to t1 . g t1 from))
 
 implicitConversions :: Type -> Type -> Maybe Conv
-implicitConversions to from = fmap (\f -> f to from) $ lookup to $ runSearch implicitConversionSearch from
+--implicitConversions to from = fmap (\f -> f to from) $ lookup to $ runSearch implicitConversionSearch from
+implicitConversions to from = runSearch implicitConversionSearch from to
 implicitConversionSearch :: ConvF
 implicitConversionSearch = 
   nothingOr qualificationConv <>

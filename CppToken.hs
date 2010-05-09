@@ -143,6 +143,7 @@ reservedWords =
     ,"long"
     ,"module"
     ,"namespace"
+    ,"null"
     ,"return"
     ,"struct"
     ,"template"

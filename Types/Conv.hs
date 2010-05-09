@@ -4,15 +4,13 @@ module Types.Conv (implicitConversions) where
 
 import Prelude hiding ((.),id)
 import Control.Category
-import Control.Applicative
-import Control.Monad.Instances
 
 import Data.Monoid
 
-import qualified Data.Set as S
-import Data.Set (Set)
 import qualified Data.Map as M
-import Data.Map (Map)
+--import Data.Map (Map)
+import qualified Data.Set as S
+--import Data.Set (Set)
 
 import Text.ParserCombinators.Parsec.Pos
 
@@ -60,27 +58,32 @@ oneOf xs = Search (snd . go xs)
 --      if any (flip S.member alreadySeen . fst) xs then error "Duplicate possible conversions..." else xs++go fs (S.union alreadySeen (S.fromList (map fst xs))) a
 
 nothingOr :: ConvF -> ConvF
-nothingOr f = oneOf [f, Search (\x -> [(x,(\to from e -> e))])]
+nothingOr f = oneOf [f, Search (\x -> [(x,(\_ _ e -> e))])]
 
 one = TypedE TInt (EInt 1)
 zero = TypedE TInt (EInt 0)
 
-retype to from (TypedE _ e) = TypedE to e
+retype to _ (TypedE _ e) = TypedE to e
 cast to _ expr = TypedE to (ECast to expr)
 boolToInt _ _ cond = TypedE TInt (EConditional cond one zero)
+{-
 toInt to TInt = id
 toInt to TChar = cast to TChar
 toInt to TBool = boolToInt to TBool
+-}
 
-toChar to TChar = id
-toChar to TInt = cast to TInt
-toChar to TBool = cast to TInt . boolToInt TInt TBool
+toChar to from = case from of
+  TChar -> id
+  TInt -> cast TChar TInt
+  TBool -> cast TChar TInt . boolToInt TInt TBool
+  _ -> error ("toChar: to "++show to++" from "++show from)
 
 intNotZero TBool TInt = TypedE TBool . EBinary (initialPos "<generated>",NotEqual) zero
 intNotZero to TChar = intNotZero to TInt . cast TInt TChar
 intNotZero a b = error ("intNotZero: to "++show a++" from "++show b)
 
 ptrNotNull TBool from = TypedE TBool . EBinary (initialPos "<generated>",NotEqual) (TypedE from ENullPtr)
+ptrNotNull a b = error ("ptrNotNull: to "++show a++" from "++show b)
 
 arrToPtr to from expr = TypedE to (EArrToPtr expr)
 
@@ -122,7 +125,7 @@ Search y <> Search x = Search $ \t ->
       -- g maps from 'from' (t) to 't1', h from 't1' to 't2' (to)
       (t2,(\to from -> h to t1 . g t1 from))
 
-implicitConversions :: Type -> Type -> Maybe (TypedE -> TypedE)
+implicitConversions :: Type -> Type -> Maybe Conv
 implicitConversions to from = fmap (\f -> f to from) $ lookup to $ runSearch implicitConversionSearch from
 implicitConversionSearch :: ConvF
 implicitConversionSearch = 

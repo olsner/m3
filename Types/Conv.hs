@@ -103,6 +103,8 @@ integralConv = Search $ \t -> case t of
   where convChar = [(TChar,toChar)]
 pointerConv = Search $ \t -> case t of
   TNullPtr -> []
+  TPtr (TConst TVoid) -> []
+  TPtr TVoid -> []
   TPtr (TConst _) -> [(TPtr (TConst TVoid),cast)]
   TPtr _ -> [(TPtr TVoid,cast)]
   _ -> []

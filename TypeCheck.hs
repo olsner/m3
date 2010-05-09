@@ -176,6 +176,7 @@ tcExpr e = case outF e of
   (EBool b) -> return (TypedE TBool (EBool b))
   (EInt i) -> return (TypedE TInt (EInt i))
   (EString str) -> return (TypedE (TPtr (TConst TChar)) (EString str))
+  (EChar c) -> return (TypedE TChar (EChar c))
   (EVarRef name) -> do
     (varName,Var qual typ) <- getBinding name
     return $ TypedE typ $ case qual of
@@ -218,8 +219,14 @@ tcExpr e = case outF e of
   (EDeref ptr) -> do
     e@(TypedE (TPtr typ) _) <- tcExpr ptr
     return (TypedE typ (EDeref e))
+  (EUnary op e) -> do
+    tcUnary (snd op) e
+    --return (TypedE res (EUnary op te))
+  ENullPtr -> return (TypedE TNullPtr ENullPtr)
   other -> error ("tcExpr: Unknown expression "++show other)
 
 binopTypeRule Equal op1type = return (TBool, op1type) -- TODO Also needs to check that op1type is supported by the operator
 binopTypeRule LessThan op1type = return (TBool, op1type) -- TODO Also needs to check that op1type is supported by the operator
 binopTypeRule other _ = tcError ("Unhandled binary operator: "++show other)
+
+tcUnary LogicalNot = tcExprAsType TBool

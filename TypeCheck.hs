@@ -13,11 +13,14 @@ import Data.Maybe
 import Data.Map (Map)
 import qualified Data.Map as M
 
+import Debug.Trace
+
 import Text.Printf
 import Text.ParserCombinators.Parsec.Pos
 
 import AST
 import CppToken
+import Types.Conv
 
 data VarType = Const | Global | NonConst deriving (Show)
 data Binding = Var VarType Type | Alias Name deriving (Show)
@@ -150,12 +153,13 @@ tcStmt ret args stmt = traceM ("tcStmt "++show stmt) $ case stmt of
   IfStmt cond t f -> IfStmt <$> tcExprAsType TBool cond <*> tcStmt ret args t <*> tcStmt ret args f
   WhileStmt cond body -> WhileStmt <$> tcExprAsType TBool cond <*> tcStmt ret args body
 
-implicitlyConvertType to orig@(TypedE from e')
-  | to == from = Just orig
-  | TInt <- from, TBool <- to = Just (TypedE TBool (EBinary (initialPos "<generated>",NotEqual) orig (TypedE TInt (EInt 0))))
-  | TConst from' <- from, Just new <- implicitlyConvertType to (TypedE from' e') = Just new
-  | TArray _ t <- from, TPtr t <- to, EDeref lval <- e' = Just (TypedE to (EArrToPtr lval))
-  | otherwise = Nothing
+traceShowRes str x = trace (str++show x) x
+
+implicitlyConvertType to orig@(TypedE from _) =
+  traceShowRes ("implicitlyConvertType "++show orig++" to "++show to++", from "++show from++": ") $
+  case implicitConversions to from of
+    Just fun -> Just (fun orig)
+    Nothing -> Nothing
 
 tcExprAsType :: MonadIO m => Type -> ExprF -> TC m TypedE
 tcExprAsType expT e = do

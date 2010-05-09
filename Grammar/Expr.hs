@@ -7,8 +7,6 @@ import Control.Functor.Fix
 
 import Data.Maybe
 
-import Debug.Trace
-
 import AST
 import CppToken
 import Parser
@@ -39,7 +37,6 @@ pAssignmentExpression = pLogicalOrExpression <**?> choice [pConditionalSuffix,su
 --  * list of operators that can follow
 --  * function to apply to said list
 
-pConditionalExpression = pLogicalOrExpression <**?> pConditionalSuffix
 pConditionalSuffix = token QuestionMark *> commit ((\t f cond -> eConditional cond t f) <$> pExpression <* token SingleColon <*> pAssignmentExpression)
 
 pLogicalOrExpression = {- skip a few logical operators -} pEqualityExpression

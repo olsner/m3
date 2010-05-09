@@ -8,4 +8,5 @@ const int O_RDWR = 2;
 
 extern "C" int open([const char] filename, int oflag, ...);
 extern "C" int read(int fd, [void] buf, int nbytes);
+extern "C" int write(int fd, [const void] buf, int nbytes);
 extern "C" int close(int fd);

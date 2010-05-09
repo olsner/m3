@@ -99,26 +99,28 @@ putBlackhole name = putModule name (error "Recursive module inclusion")
 tcUnit :: MonadIO m => Name -> Unit ExprF -> TC m (Unit TypedE)
 tcUnit name (Unit imports decl) = traceM ("tcUnit "++show name) $ do
   putBlackhole name
-  unit <- Unit imports <$> foldr withImport (tcDecl name decl) imports
+  unit <- Unit imports <$> foldr withImport (tcDecl (QualifiedName []) decl) imports
   putModule name (Right unit)
   return unit
 
 tcDecl :: MonadIO m => Name -> Decl ExprF -> TC m (Decl TypedE)
 tcDecl name decl@(Decl local def) = traceM (printf "tcDecl %s %s %s" (show name)(show local) (show decl)) $
-  Decl local <$> tcDef (qualifyName name local) def
+  Decl local <$> tcDef (qualifyName name local) local def
 
 invalidFormalParams [] = False
 invalidFormalParams xs = any (== VarargParam) (init xs)
 
-tcDef :: MonadIO m => Name -> Def ExprF -> TC m (Def TypedE)
-tcDef name def = traceM ("tcDef "++show name++": "++show def) $ case def of
+tcDef :: MonadIO m => Name -> Name -> Def ExprF -> TC m (Def TypedE)
+tcDef name local def = traceM ("tcDef "++show name++": "++show def) $ case def of
   (ModuleDef decls) -> ModuleDef <$> mapM (tcDecl name) (decls)
   (FunctionDef retT args code) -> do
     when (invalidFormalParams args) (tcError "Malformed formal parameter list")
     addBinding name (Var NonConst (TFunction retT args))
+    addBinding local (Alias name)
     FunctionDef retT args <$> foldr withArg (mapM (tcStmt retT args) code) args
   (ExternalFunction linkage ret args) -> do
     addBinding name (Var NonConst (TFunction ret args))
+    addBinding local (Alias name)
     return (ExternalFunction linkage ret args)
   (VarDef typ e) -> do
     let typ' = case typ of

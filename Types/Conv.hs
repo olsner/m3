@@ -85,7 +85,7 @@ intNotZero a b = error ("intNotZero: to "++show a++" from "++show b)
 ptrNotNull TBool from = TypedE TBool . EBinary (initialPos "<generated>",NotEqual) (TypedE from ENullPtr)
 ptrNotNull a b = error ("ptrNotNull: to "++show a++" from "++show b)
 
-arrToPtr to from expr = TypedE to (EArrToPtr expr)
+arrToPtr to (TArray _ _) expr = TypedE to (EArrToPtr expr)
 
 qualificationConv = Search $ \t -> case t of
   TPtr (TFunction _ _) -> []
@@ -126,6 +126,9 @@ Search y <> Search x = Search $ \t ->
       (t2,(\to from -> h to t1 . g t1 from))
 
 implicitConversions :: Type -> Type -> Maybe Conv
+implicitConversions to from@TNullPtr = case to of
+  TPtr _ -> Just (cast to from)
+  TConst (TPtr _) -> Just (cast to from)
 implicitConversions to from = fmap (\f -> f to from) $ lookup to $ runSearch implicitConversionSearch from
 implicitConversionSearch :: ConvF
 implicitConversionSearch = 

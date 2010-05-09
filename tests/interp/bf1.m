@@ -43,7 +43,7 @@ void run([const char] buffer, int size)
 	[const char] ip = buffer;
 	[char] tape = malloc(512);
 	[char] tapep;
-	while (ip < size)
+	while (ip < end)
 	{
 		int instr = *ip++;
 		if (instr == '>') tapep++;
@@ -90,8 +90,7 @@ int main(int argc, [const [const char]] argv)
 	int alloced = 512;
 	int nread = 0;
 	// TODO Casts!
-	[void] buffer = malloc(alloced);
-	// TODO Loops!
+	[char] buffer = malloc(alloced);
 	while (read(fd, buffer + size, 1) == 1)
 	{
 		size++;

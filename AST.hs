@@ -70,6 +70,7 @@ data Type =
   | TBool
   | TConst Type
   | TPtr Type
+  | TNullPtr -- pointer of any type...
   | TArray Int Type
   | TFunction Type [FormalParam]
   deriving (Show,Eq,Ord)
@@ -77,19 +78,25 @@ data Type =
 data TypedE = TypedE Type (Expr TypedE) deriving (Show,Eq)
 
 data Expr e =
-    EVarRef Name
-  | EFunCall e [e]
+    EFunCall e [e]
   | EBinary Token e e
   | EUnary Token e
   | EPostfix Token e
   | EConditional e e e -- ^ ?: expressions: condition, true-value, false-value
-  | EAssignment Token e e
-  | EString String
-  | EInt Integer
-  | EBool Bool
+  | EAssignment Token e e -- FIXME EBinary with assignment operator...
   | EDeref e -- ^ Doubles as lvalue-to-rvalue conversion, inserted by type checking. All variables are pointers, surprisingly
   | EArrayIndex e {- ^ index -} e {- ^ array -}
   | EArrToPtr e
+  | ESeq e e
+  | ECast Type e
+  -- 
+  | EVarRef Name
+  -- Literals
+  | EString String
+  | EInt Integer
+  | EBool Bool
+  | EChar Char
+  | ENullPtr
   deriving (Show,Eq)
 
 type ExprF = FixF Expr

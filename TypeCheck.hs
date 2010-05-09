@@ -153,7 +153,7 @@ tcStmt ret args stmt = traceM ("tcStmt "++show stmt) $ case stmt of
   IfStmt cond t f -> IfStmt <$> tcExprAsType TBool cond <*> tcStmt ret args t <*> tcStmt ret args f
   WhileStmt cond body -> WhileStmt <$> tcExprAsType TBool cond <*> tcStmt ret args body
 
-traceShowRes str x = trace (str++show x) x
+traceShowRes str x = trace str $ trace (str++show x) x
 
 implicitlyConvertType to orig@(TypedE from _) =
   traceShowRes ("implicitlyConvertType "++show orig++" to "++show to++", from "++show from++": ") $

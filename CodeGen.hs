@@ -265,6 +265,9 @@ cgExpr typ e = case e of
     res <- cgPostfixOp op typ val
     store res lv
     return val
+  (ECast to expr@(TypedE from _)) -> do
+    lv <- cgTypedE expr
+    cgCast to from lv
   other -> error ("Unimplemented expression: "++show other)
 
 icmp op x y = unwords ["icmp",op,valueText x++",",valueTextNoType y]
@@ -281,6 +284,16 @@ getBinopCode t = case t of
 
 cgPostfixOp (_,Decrement) typ val = withFresh typ $ (=% "sub "++valueText val++", 1")
 cgPostfixOp (_,Increment) typ val = withFresh typ $ (=% "add "++valueText val++", 1")
+
+cgCast to@(TPtr _) (TPtr _) lv = do
+  withFresh to (=% "bitcast "++valueText lv)
+cgCast to@(TPtr _) TInt lv = do
+  withFresh to (=% "inttoptr "++valueText lv)
+cgCast to@TInt (TPtr _) lv = do
+  withFresh to (=% "ptrtoint "++valueText lv)
+cgCast to@(TPtr _) TNullPtr lv = cgCast to (TPtr TVoid) lv
+cgCast to@TInt TChar lv = withFresh to (=% "signext "++valueText lv)
+cgCast to from _ = error ("Unimplemented cast from "++show from++" to "++show to)
 
 type SF a = CounterT Int (SetWriter (Map String Int)) a
 runStringFinder :: SF a -> (a,Map String Int)
@@ -331,6 +344,7 @@ getStringsExpr (EPostfix op lval) = EPostfix op <$> getStringsTypedE lval
 getStringsExpr (EArrToPtr e) = EArrToPtr <$> getStringsTypedE e
 getStringsExpr (EArrayIndex e ix) = EArrayIndex <$> getStringsTypedE e <*> getStringsTypedE ix
 getStringsExpr (EDeref e) = EDeref <$> getStringsTypedE e
+getStringsExpr (ECast t e) = ECast t <$> getStringsTypedE e
 getStringsExpr e@(EVarRef _) = return e
 getStringsExpr e@(EInt _) = return e
 getStringsExpr e@(EBool _) = return e

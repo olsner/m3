@@ -244,11 +244,11 @@ cgExpr typ e = case e of
   (EDeref loc) -> do
     loc' <- cgTypedE loc
     withFresh typ (=% load loc')
-  (EAssignment (_,Assignment) lval rval) -> do
+  (EAssignment (_,assignOp) lval rval) -> do
     let (TypedE _ (EDeref loc)) = lval
     lv <- cgTypedE loc
     rv <- cgTypedE rval
-    store rv lv
+    cgAssignOp assignOp rv lv
   (EBinary op x y) -> do
     xres <- cgTypedE x
     yres <- cgTypedE y
@@ -278,10 +278,26 @@ cmpBinop tok op pos typ = case typ of
   TChar -> icmp op
   --TFloat -> fcmp op
   _ -> error (show pos++": "++show tok++" operator only supports ints, attempted on "++show typ)
+arithBinop tok op pos typ = case typ of
+  TInt -> f op
+  TChar -> f op
+  (TPtr t) -> \x y -> getelementptr x [y]
+  _ -> error (show pos++": "++show tok++" operator only supports ints, attempted on "++show typ)
+  where
+    f op x y = unwords [op,valueText x,valueTextNoType y]
 getBinopCode t = case t of
   Equal -> cmpBinop t "eq"
   NotEqual -> cmpBinop t "ne"
   LessThan -> cmpBinop t "slt"
+  GreaterOrEqual -> cmpBinop t "sge"
+  Plus -> arithBinop t "add"
+  Minus -> arithBinop t "sub"
+  _ -> error ("getBinopCode: "++show t)
+
+cgAssignOp Assignment = store
+cgAssignOp PlusAssign = \rv lv -> do
+  lv' <- withFresh (valueType lv) $ (=% "add "++valueText lv++","++valueTextNoType rv)
+  store lv' lv
 
 cgPostfixOp (_,Decrement) typ val = withFresh typ $ (=% "sub "++valueText val++", 1")
 cgPostfixOp (_,Increment) typ val = withFresh typ $ (=% "add "++valueText val++", 1")

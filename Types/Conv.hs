@@ -128,6 +128,7 @@ Search y <> Search x = Search $ \t ->
       (t2,(\to from -> h to t1 . g t1 from))
 
 implicitConversions :: Type -> Type -> Maybe Conv
+implicitConversions to from | to == from = Just id
 implicitConversions to from@TNullPtr = case to of
   TPtr _ -> Just (cast to from)
   TConst (TPtr _) -> Just (cast to from)

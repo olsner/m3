@@ -219,6 +219,7 @@ cgExpr :: Type -> Expr TypedE -> CGM Value
 cgExpr typ e = case e of
   (EBool b) -> return (mkValue ConstExpr typ (if b then "1" else "0"))
   (EInt i) -> return (mkValue ConstExpr typ (show i))
+  (EChar i) -> return (mkValue ConstExpr typ (show (ord i)))
   (EFunCall fun@(TypedE funType _) args) -> do
     (fun_:args_) <- mapM cgTypedE (fun:args)
     let funcall = call fun_ args_

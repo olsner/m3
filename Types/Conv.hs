@@ -14,8 +14,6 @@ import qualified Data.Set as S
 
 import Debug.Trace hiding (traceShow)
 
-import Text.ParserCombinators.Parsec.Pos
-
 import CppToken
 import AST -- for Types
 

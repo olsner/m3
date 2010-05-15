@@ -1,8 +1,13 @@
-{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE PatternGuards,DeriveDataTypeable #-}
 
 module CppToken where
 
-import Text.ParserCombinators.Parsec.Pos
+import Data.Data (Data,Typeable)
+
+data SourcePos = SourcePos { sourceName :: String, sourceLine :: Int, sourceColumn :: Int } deriving (Ord,Eq,Data,Typeable)
+instance Show SourcePos where
+  show (SourcePos name line column) = name++" (line "++show line++", column "++show column++")"
+initialPos source = SourcePos source 1 1
 
 type Token = (SourcePos, Tok)
 data Tok =
@@ -75,7 +80,7 @@ data Tok =
     | Decrement
     | Increment
 
-    deriving (Show, Read, Eq, Ord)
+    deriving (Show, Read, Eq, Ord, Data, Typeable)
 
 oneCharOperators = zip ";{}()[],.*&+-/!~|<>?:=" $
     [Semicolon

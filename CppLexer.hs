@@ -18,9 +18,9 @@ import Numeric
 -- Token, Tok
 import CppToken
 
-import Text.ParserCombinators.Parsec.Pos
 #if USE_PARSEC
-import Text.ParserCombinators.Parsec
+import Text.ParserCombinators.Parsec hiding (sourceName,sourceLine,sourceColumn,getPosition)
+import qualified Text.ParserCombinators.Parsec as P
 #else
 import Parser
 import Control.Applicative ((<|>),many)
@@ -37,6 +37,7 @@ instance Applicative (GenParser t s) where
   (<*>) = ap
   pure = return
 
+getPosition = (liftM3 SourcePos P.sourceName P.sourceLine P.sourceColumn) <$> P.getPosition
 #else
 type Lexer a = Parser Char a
 oneOf = choice . map char

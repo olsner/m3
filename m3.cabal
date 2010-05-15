@@ -35,7 +35,8 @@ Executable m3
     containers,
     -- Only for FixF - that's exactly one newtype we need...
     category-extras,
-    directory, filepath
+    directory, filepath,
+    syb
   
   -- Modules not exported by this package.
   -- Other-modules:       

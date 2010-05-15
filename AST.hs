@@ -1,10 +1,11 @@
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE TypeSynonymInstances,DeriveDataTypeable #-}
 
 module AST where
 
 import Control.Functor.Fix
 import Control.Monad.RWS
 
+import Data.Data (Data,Typeable)
 import Data.List (intercalate)
 import Data.Maybe (fromJust)
 
@@ -15,12 +16,14 @@ import qualified Data.Set as S
 
 import CppToken (Token)
 
-newtype Name = QualifiedName [String] deriving (Show,Eq,Ord)
+newtype Name = QualifiedName [String] deriving (Show,Eq,Ord,Data,Typeable)
 qualifyName (QualifiedName xs) (QualifiedName ys) = QualifiedName (xs++ys)
 encodeName (QualifiedName xs) = intercalate "__" xs
 
 -- A unit is a set of imports and *one* declaration of the toplevel entity.
-data Unit e = Unit { unitImports :: [Name], unitDecl :: Decl e } deriving (Show,Eq)
+data Unit e =
+  Unit { unitImports :: [Name], unitDecl :: Decl e }
+  deriving (Show,Eq,Data,Typeable)
 importedUnits :: Map Name (Unit e) -> Name -> [Name]
 importedUnits units name = snd $ execRWS (go name) units S.empty
   where
@@ -41,16 +44,16 @@ data Show e => Statement e =
   | CompoundStmt [Statement e]
   | IfStmt e (Statement e) (Statement e)
   | WhileStmt e (Statement e)
-  deriving (Show,Eq)
+  deriving (Show,Eq,Data,Typeable)
 
 type CompoundStatement e = [Statement e]
 
-data Decl e = Decl Name (Def e) deriving (Show,Eq)
+data Decl e = Decl Name (Def e) deriving (Show,Eq,Data,Typeable)
 
 data FormalParam =
     FormalParam Type (Maybe Name)
   | VarargParam
-  deriving (Show,Eq,Ord)
+  deriving (Show,Eq,Ord,Data,Typeable)
 type FormalParams = [FormalParam]
 
 data Def e =
@@ -59,7 +62,7 @@ data Def e =
   | ExternalFunction { funLinkage :: Maybe String, funReturnType :: Type, funArgs :: FormalParams }
   | VarDef Type (Maybe e)
 
-  deriving (Show,Eq)
+  deriving (Show,Eq,Data,Typeable)
 
 data Type =
     TVoid
@@ -73,9 +76,9 @@ data Type =
   | TNullPtr -- pointer of any type...
   | TArray Int Type
   | TFunction Type [FormalParam]
-  deriving (Show,Eq,Ord)
+  deriving (Show,Eq,Ord,Data,Typeable)
 
-data TypedE = TypedE Type (Expr TypedE) deriving (Show,Eq)
+data TypedE = TypedE Type (Expr TypedE) deriving (Show,Eq,Data,Typeable)
 
 data Expr e =
     EFunCall e [e]
@@ -97,7 +100,7 @@ data Expr e =
   | EBool Bool
   | EChar Char
   | ENullPtr
-  deriving (Show,Eq)
+  deriving (Show,Eq,Data,Typeable)
 
 type ExprF = FixF Expr
 instance Show ExprF where

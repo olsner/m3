@@ -36,7 +36,7 @@ import SetWriter
 import TypeCheck (maybeM)
 
 data ValueKind = Variable | ConstExpr | AllocaPtr
-data Value = Value { valueKind :: ValueKind, valueType :: String, valueTextNoType :: String }
+data Value = Value { valueKind :: ValueKind, valueType :: Type, valueTextNoType :: String }
 type Locals = Map String Value
 type CGMT m = CounterT Int (StateT Locals (WriterT String m))
 type CGM a = forall m . (MonadIO m) => CGMT m a
@@ -58,8 +58,8 @@ getLocal :: Name -> CGM (Maybe Value)
 getLocal name = gets (M.lookup (encodeName name))
 
 mkValue :: ValueKind -> Type -> String -> Value
-mkValue k typ s = Value k (encodeType typ) s
-valueText v = valueType v++' ':valueTextNoType v
+mkValue k typ s = Value k typ s
+valueText v = encodeType (valueType v)++' ':valueTextNoType v
 
 runCGM :: Monad m => FormalParams -> CGMT m a -> WriterT String m a
 runCGM args = fmap fst . flip runStateT (M.fromList $ concatMap f args) . runCounterT 0

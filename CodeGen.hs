@@ -268,6 +268,7 @@ cgExpr typ e = case e of
   (ECast to expr@(TypedE from _)) -> do
     lv <- cgTypedE expr
     cgCast to from lv
+  ENullPtr -> return (mkValue ConstExpr TNullPtr "null")
   other -> error ("Unimplemented expression: "++show other)
 
 icmp op x y = unwords ["icmp",op,valueText x++",",valueTextNoType y]
@@ -348,6 +349,8 @@ getStringsExpr (ECast t e) = ECast t <$> getStringsTypedE e
 getStringsExpr e@(EVarRef _) = return e
 getStringsExpr e@(EInt _) = return e
 getStringsExpr e@(EBool _) = return e
+getStringsExpr e@(EChar _) = return e
+getStringsExpr e@(ENullPtr) = return e
 getStringsExpr e = error ("Unhandled expression in string finder: "++show e)
 
 showStringLLVM xs = "\""++(f =<< xs)++"\""

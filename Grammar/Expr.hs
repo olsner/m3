@@ -11,6 +11,7 @@ import AST
 import CppToken
 import Parser
 
+import Grammar.Types
 import Grammar.Utils
 
 eSeq a b = InF (ESeq a b)
@@ -19,6 +20,7 @@ eUnary a b = InF (EUnary a b)
 eAssignment a b c = InF (EAssignment a b c)
 eConditional a b c = InF (EConditional a b c)
 eBinop a b c = InF (EBinary a b c)
+eCast typ e = InF (ECast typ e)
 
 (<**?>) :: Alternative f => f a -> f (a -> a) -> f a
 p <**?> maybefp = p <**> (fromMaybe id <$> optional maybefp)
@@ -87,8 +89,7 @@ pPrimaryExpression = choice
   ,InF . EChar . snd <$> char -- FIXME Position is thrown away
   ,InF (EBool True) <$ keyword "true"
   ,InF (EBool False) <$ keyword "false"
-  -- TODO Move to right place
-  --,InF . EDeref <$> (token Asterix *> pLeftExpression)
+  ,keyword "cast" *> commit (eCast <$> inTypeBrackets pType <*> inParens pExpression)
   ] <|> failParse "Out of luck in pLeftExpression"
 
 pAssignmentOperator = choice . map token $

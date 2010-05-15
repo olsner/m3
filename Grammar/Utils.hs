@@ -11,6 +11,9 @@ import AST
 import CppToken
 import Parser
 
+infixl 3 $>
+($>) = flip (<$)
+
 token t = satisfy (show t) ((== t) . snd)
 lookToken t = satisfyLook (show t) ((== t) . snd)
 
@@ -44,3 +47,4 @@ listOf p = sepBy p (token Comma)
 
 pSimpleName = (\(_,nm) -> QualifiedName [nm]) <$> identifier
 pName = QualifiedName . map snd <$> sepBy1 identifier (token DoubleColon)
+

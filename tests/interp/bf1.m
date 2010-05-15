@@ -41,7 +41,7 @@ void run([const char] buffer, int size)
 {
 	[const char] end = buffer + size;
 	[const char] ip = buffer;
-	[char] tape = malloc(512);
+	[char] tape = cast<[[char]]>(malloc(512));
 	[char] tapep;
 	while (ip < end)
 	{

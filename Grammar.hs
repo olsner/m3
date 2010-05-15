@@ -11,6 +11,7 @@ import CppToken
 import Parser
 
 import Grammar.Expr
+import Grammar.Types
 import Grammar.Utils
 
 pUnit = Unit <$> many pImport <*> (pModule <|> head <$> pFunction) <* eof
@@ -36,20 +37,6 @@ pFormalParamList = inParens (listOf $ choice [pFormalParam, pVarargParam])
 
 pFormalParam = FormalParam <$> pType <*> optional pSimpleName
 pVarargParam = VarargParam <$ token Ellipsis
-
-infixl 3 $>
-($>) = flip (<$)
-
-pType = pLeftType <**> pArraySuffix
-pLeftType = choice
-  [keyword "void" $> TVoid
-  ,keyword "int" $> TInt
-  ,keyword "char" $> TChar
-  ,keyword "bool" $> TBool
-  ,keyword "const" *> (TConst <$> pType)
-  ,inBrackets (commit (TPtr <$> pType))
-  ] <|> failParse "Out of luck in pLeftType"
-pArraySuffix = maybe id TArray <$> optional (snd <$> inBrackets integer)
 
 pCompoundStatement = inBraces (commit (many pStatement))
 pStatement = choice

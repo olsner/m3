@@ -127,6 +127,7 @@ unaryOperators =
 
 reservedWords =
     ["bool"
+    ,"cast"
     ,"char"
     ,"class"
     ,"const"

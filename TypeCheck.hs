@@ -227,7 +227,16 @@ tcExpr e = case outF e of
     tcUnary (snd op) e
     --return (TypedE res (EUnary op te))
   ENullPtr -> return (TypedE TNullPtr ENullPtr)
+  ECast to e -> do
+    typed@(TypedE typ _) <- tcExpr e
+    when (not (checkCast to typ)) $ tcError ("Invalid cast from "++show typ++" to "++show to)
+    return (TypedE to (ECast to typed))
   other -> error ("tcExpr: Unknown expression "++show other)
+
+checkCast (TPtr _) (TPtr TVoid) = True
+checkCast (TConst (TPtr _)) (TPtr TVoid) = True
+checkCast (TPtr (TConst _)) (TPtr (TConst TVoid)) = True
+checkCast _ _ = False
 
 relopRule x = return (TBool, x)
 -- FIXME This only handles pointer arithmetic where the *right-hand* argument is a pointer, not the flipped one...

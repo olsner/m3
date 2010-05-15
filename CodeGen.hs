@@ -103,6 +103,7 @@ cgDecl name (Decl local def) =
   cgDef (qualifyName name local) local def
 
 encodeType :: Type -> String
+encodeType (TPtr (TConst t)) = encodeType (TPtr t)
 encodeType (TPtr TVoid) = "i8*"
 encodeType (TPtr t) = encodeType t++"*"
 encodeType TInt = "i32"

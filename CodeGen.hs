@@ -137,7 +137,9 @@ cgDef name local def = case def of
     tell ")"
     tell "{\n"
     cgFunBody code
-    line "unreachable"
+    case retT of
+      TVoid -> line "ret void"
+      _ -> line "unreachable"
     tell "}\n\n"
   (ExternalFunction _linkage ret args) -> do
     tell ("declare "++encodeType ret++" @"++encodeName local++"("++intercalate "," (map (encodeFormal False) args)++")\n")

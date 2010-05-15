@@ -89,15 +89,14 @@ int main(int argc, [const [const char]] argv)
 	int size = 0;
 	int alloced = 512;
 	int nread = 0;
-	// TODO Casts!
-	[char] buffer = malloc(alloced);
+	[char] buffer = cast<[[char]]>(malloc(alloced));
 	while (read(fd, buffer + size, 1) == 1)
 	{
 		size++;
 		if (alloced == size)
 		{
 			alloced += 512;
-			buffer = realloc(buffer, alloced);
+			buffer = cast<[[char]]>(realloc(buffer, alloced));
 		}
 	}
 

@@ -31,8 +31,7 @@ importedUnits units name = snd $ execRWS (go name) units S.empty
     go name = gets (S.member name) >>= \member -> when (not member) (add name)
     add name = do
       modify (S.insert name)
-      imps <- asks (unitImports . fromJust . M.lookup name)
-      mapM_ go imps
+      mapM_ go =<< asks (unitImports . fromJust . M.lookup name)
       tell [name]
 
 data Show e => Statement e =

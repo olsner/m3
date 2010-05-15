@@ -79,7 +79,7 @@ printLLVM name = do
   output <- execWriterT $ do
     (units, stringMap) <- asks stringfindUnits
     local (const units) $ do
-      liftIO (printf "Generating code for %s...\n" (show name))
+      _ <- liftIO (printf "Generating code for %s...\n" (show name))
       writeStrings stringMap
       mapM_ (cgUnit . fromJust . flip M.lookup units) (importedUnits units name)
       cgMain name
@@ -168,6 +168,7 @@ brIf cond true false = line ("br "++valueText cond++", label %"++true++", label 
 label lbl m = tell (lbl++":\n") >> m
 getelementptr base xs = "getelementptr "++valueText base++","++valueTextList xs
 zero = mkValue ConstExpr TBool "0"
+one = mkValue ConstExpr TBool "1"
 
 cgStmt :: Statement TypedE -> CGM ()
 cgStmt stmt = case stmt of
@@ -240,7 +241,7 @@ cgExpr typ e = case e of
     lift (liftIO (printf "EArrToPtr: %s -> %s\n" (show e) (show typ)))
     case valueKind v of
       ConstExpr -> return (mkValue ConstExpr (TPtr arrelem) ("getelementptr ("++valueText v++", i1 0, i1 0)"))
-      k -> withFresh (TPtr arrelem) (=% getelementptr v [zero, zero])
+      _ -> withFresh (TPtr arrelem) (=% getelementptr v [zero, zero])
   (EDeref loc) -> do
     loc' <- cgTypedE loc
     withFresh typ (=% load loc')

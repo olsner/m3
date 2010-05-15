@@ -12,6 +12,8 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 --import Data.Set (Set)
 
+import Debug.Trace hiding (traceShow)
+
 import Text.ParserCombinators.Parsec.Pos
 
 import CppToken
@@ -26,7 +28,7 @@ instance ShowType Type where
 instance (ShowType a, ShowType b) => ShowType (a -> b) where
   showType f = let x = undefined :: a; y = f x :: b in showType x ++ " -> " ++ showType y
 instance (ShowType (a -> b)) => Show (a -> b) where
-  show f = '<' : showType f ++ ">"
+  show f = "<fun>" -- '<' : showType f ++ ">"
 
 type Conv = TypedE -> TypedE
 -- Search: find paths from a to b, returning some kind of evidence of the path afterwards
@@ -34,7 +36,9 @@ type Conv = TypedE -> TypedE
 newtype Search c a b = Search { runSearch :: a -> [(b,b -> a -> c)] }
 type ConvF = Search (TypedE -> TypedE) Type Type
 
-concatMapMap f = M.toList . M.fromList . concat . map f
+traceShow msg x = x `seq` trace (msg++show x) x
+traceFun msg f = traceShow (msg++" OUT: ") . f . traceShow (msg++" IN: ")
+concatMapMap f = traceFun "concatMapMap" (M.toList . M.fromList . concat . map f)
 
 --runSearch :: Search c a b -> a -> [(b,b -> a -> c)]
 --runSearch (Search f) = f
@@ -43,6 +47,10 @@ firstOf :: Show b => Ord b => [Search c a b] -> Search c a b
 firstOf (Search f:xs) = Search $ \a ->
   case f a of [] -> runSearch (oneOf xs) a; xs -> xs
 firstOf []     = Search (const [])
+
+nothingOr :: ConvF -> ConvF
+nothingOr (Search f) = Search $ \a ->
+  case f a of [] -> [(a,(\_ _ e -> e))]; xs -> xs
 
 -- Combine all possible conversions in this level. *But* don't allow duplicate
 -- types...
@@ -57,8 +65,11 @@ oneOf xs = Search (snd . go xs)
 --      let xs = f a in
 --      if any (flip S.member alreadySeen . fst) xs then error "Duplicate possible conversions..." else xs++go fs (S.union alreadySeen (S.fromList (map fst xs))) a
 
-nothingOr :: ConvF -> ConvF
-nothingOr f = oneOf [f, Search (\x -> [(x,(\_ _ e -> e))])]
+Search x <> Search y = Search $ \t ->
+  flip concatMapMap (x t) $ \(t1,g) ->
+    flip map (y t1) $ \(t2,h) ->
+      -- g maps from 'from' (t) to 't1', h from 't1' to 't2' (to)
+      (t2,(\to from -> h to t1 . g t1 from))
 
 one = TypedE TInt (EInt 1)
 zero = TypedE TInt (EInt 0)
@@ -87,26 +98,29 @@ ptrNotNull a b = error ("ptrNotNull: to "++show a++" from "++show b)
 
 arrToPtr to (TArray _ _) expr = TypedE to (EArrToPtr expr)
 
-qualificationConv = Search $ \t -> case t of
+removeConst = Search $ \t -> case t of
+  (TConst t') -> [(t',retype)]
+  _ -> []
+qualificationConv = Search $ traceFun "qualificationConv" $ \t -> case t of
   TPtr (TFunction _ _) -> []
-  TPtr pointee -> [(TPtr (TConst pointee),retype)]
+  TPtr pointee -> [(TPtr (TConst pointee),retype),(t,retype)]
   (TFunction _ _) -> []
-  t -> [(TConst t,retype)]
-integralPromo = Search $ \t -> case t of
-  TChar -> [(TInt,cast)]
-  TBool -> [(TInt,boolToInt)]
+  _ -> []
+integralPromo = Search $ traceFun "integralPromo" $ \t -> case t of
+  TChar -> [(TInt,cast),(t,retype)]
+  TBool -> [(TInt,boolToInt),(t,retype)]
   _ -> []
 integralConv = Search $ \t -> case t of
-  TInt -> convChar
-  TBool -> convChar
+  TInt -> convChar t
+  TBool -> convChar t
   _ -> []
-  where convChar = [(TChar,toChar)]
+  where convChar t = [(TChar,toChar),(t,retype)]
 pointerConv = Search $ \t -> case t of
-  TNullPtr -> []
+  -- To avoid doubling types, don't convert void pointers to void pointers...
   TPtr (TConst TVoid) -> []
   TPtr TVoid -> []
-  TPtr (TConst _) -> [(TPtr (TConst TVoid),cast)]
-  TPtr _ -> [(TPtr TVoid,cast)]
+  TPtr (TConst _) -> [(TPtr (TConst TVoid),cast),(t,retype)]
+  TPtr _ -> [(TPtr TVoid,cast),(t,retype)]
   _ -> []
 booleanConv :: ConvF
 booleanConv = Search $ \t -> case t of
@@ -120,12 +134,10 @@ arrayToPtr = Search $ \t -> case t of
 funcToPtr = Search $ \t -> case t of
   (TFunction _ _) -> [(TPtr t,retype)]
   _ -> []
-
-Search y <> Search x = Search $ \t ->
-  flip concatMapMap (x t) $ \(t1,g) ->
-    flip map (y t1) $ \(t2,h) ->
-      -- g maps from 'from' (t) to 't1', h from 't1' to 't2' (to)
-      (t2,(\to from -> h to t1 . g t1 from))
+addConst = Search $ \t -> case t of
+  TConst _ -> []
+  TPtr t2 -> [(TPtr (TConst t2), retype), (t,retype)]
+  _ -> [(TConst t, retype), (t,retype)]
 
 implicitConversions :: Type -> Type -> Maybe Conv
 implicitConversions to from | to == from = Just id
@@ -135,6 +147,7 @@ implicitConversions to from@TNullPtr = case to of
 implicitConversions to from = fmap (\f -> f to from) $ lookup to $ runSearch implicitConversionSearch from
 implicitConversionSearch :: ConvF
 implicitConversionSearch = 
+  nothingOr removeConst <>
   nothingOr qualificationConv <>
   nothingOr (oneOf
     [integralPromo
@@ -142,5 +155,7 @@ implicitConversionSearch =
     ,pointerConv
     ,booleanConv
     ]) <>
-  nothingOr (firstOf [arrayToPtr,funcToPtr])
+  nothingOr (firstOf [arrayToPtr,funcToPtr]) <>
+  -- TODO Should take the fix-point of addConst or something here...
+  nothingOr addConst
 

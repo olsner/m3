@@ -18,6 +18,8 @@ import qualified Data.Set as S
 import Data.Map (Map)
 import qualified Data.Map as M
 
+import Data.Generics hiding (Unit)
+
 import Text.Printf
 
 {-import LLVM.Core hiding (createNamedFunction, newNamedFunction, defineFunction)
@@ -334,41 +336,10 @@ stringReplacement str = do
     newString = getAndInc >>= \i ->
       lift (tell (M.fromList [(str,i)])) >> return i
 
-getStrings :: Unit TypedE -> SF (Unit TypedE)
-getStrings unit = do
-    decl <- getStringsDecl (unitDecl unit)
-    return (unit { unitDecl = decl })
-getStringsDecl (Decl local def) = Decl local <$> getStringsDef def
-getStringsDef (ModuleDef decls) = ModuleDef <$> mapM getStringsDecl decls
-getStringsDef (FunctionDef retT args code) = FunctionDef retT args <$> mapM getStringsStmt code
-getStringsDef def = return def
-getStringsStmt (ReturnStmt e) = ReturnStmt <$> getStringsTypedE e
-getStringsStmt (ExprStmt e) = ExprStmt <$> getStringsTypedE e
-getStringsStmt (VarDecl n t init s) = VarDecl n t <$> maybeM getStringsTypedE init <*> getStringsStmt s
-getStringsStmt (CompoundStmt ss) = CompoundStmt <$> mapM getStringsStmt ss
-getStringsStmt (IfStmt c t f) = IfStmt <$> getStringsTypedE c <*> getStringsStmt t <*> getStringsStmt f
-getStringsStmt (WhileStmt c s) = WhileStmt <$> getStringsTypedE c <*> getStringsStmt s
-getStringsStmt s@(EmptyStmt) = return s
-getStringsStmt s@(ReturnStmtVoid) = return s
-
-getStringsTypedE (TypedE _ (EString str)) = stringReplacement str
-getStringsTypedE (TypedE t e) = TypedE t <$> getStringsExpr e
--- This is the one with the action
--- These patterns are just about finding the EString expressions
-getStringsExpr (EFunCall fun args) = EFunCall <$> getStringsTypedE fun <*> mapM getStringsTypedE args
-getStringsExpr (EAssignment op lval rval) = EAssignment op <$> getStringsTypedE lval <*> getStringsTypedE rval
-getStringsExpr (EBinary op x y) = EBinary op <$> getStringsTypedE x <*> getStringsTypedE y
-getStringsExpr (EPostfix op lval) = EPostfix op <$> getStringsTypedE lval
-getStringsExpr (EArrToPtr e) = EArrToPtr <$> getStringsTypedE e
-getStringsExpr (EArrayIndex e ix) = EArrayIndex <$> getStringsTypedE e <*> getStringsTypedE ix
-getStringsExpr (EDeref e) = EDeref <$> getStringsTypedE e
-getStringsExpr (ECast t e) = ECast t <$> getStringsTypedE e
-getStringsExpr e@(EVarRef _) = return e
-getStringsExpr e@(EInt _) = return e
-getStringsExpr e@(EBool _) = return e
-getStringsExpr e@(EChar _) = return e
-getStringsExpr e@(ENullPtr) = return e
-getStringsExpr e = error ("Unhandled expression in string finder: "++show e)
+getStrings = everywhereM (mkM f)
+  where
+    f (TypedE _ (EString str)) = stringReplacement str
+    f x = return x
 
 showStringLLVM xs = "\""++(f =<< xs)++"\""
   where

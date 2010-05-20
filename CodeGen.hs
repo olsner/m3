@@ -4,7 +4,6 @@
 module CodeGen (printLLVM) where
 
 import Control.Applicative
-import Control.Monad.Identity
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
@@ -13,23 +12,14 @@ import Data.Char
 import Data.List
 import Data.Maybe
 
-import Data.Set (Set)
-import qualified Data.Set as S
+{-import Data.Set (Set)
+import qualified Data.Set as S-}
 import Data.Map (Map)
 import qualified Data.Map as M
 
 import Data.Generics hiding (Unit)
 
 import Text.Printf
-
-{-import LLVM.Core hiding (createNamedFunction, newNamedFunction, defineFunction)
-import qualified LLVM.Core.Util as U
-
-import qualified LLVM.FFI.Core as FFI
-import qualified LLVM.FFI.Target as FFI
-import qualified LLVM.FFI.BitWriter as FFI
-import qualified LLVM.FFI.BitReader as FFI
-import qualified LLVM.FFI.Transforms.Scalar as FFI-}
 
 import AST
 import Counter
@@ -116,7 +106,7 @@ encodeType (TConst t) = encodeType t
 encodeType (TFunction t params) = encodeType t++"("++intercalate "," (map (encodeFormal False) params)++")"
 encodeType (TArray len typ) = "["++show len++" x "++encodeType typ++"]"
 encodeType TNullPtr = encodeType (TPtr TVoid)
-encodeType other = error ("encodeType "++show other)
+--encodeType other = error ("encodeType "++show other)
 
 -- | Encode a formal parameter as a LLVM type (e.g. "i32") or type + name (as "i32 %param")
 encodeFormal :: Bool        -- ^ Include variable name for parameter lists?
@@ -144,7 +134,7 @@ cgDef name local def = case def of
   (ExternalFunction _linkage ret args) -> do
     tell ("declare "++encodeType ret++" @"++encodeName local++"("++intercalate "," (map (encodeFormal False) args)++")\n")
     tell ("@"++encodeName name++" = alias linker_private "++encodeType (TPtr (TFunction ret args))++" @"++encodeName local++"\n")
-  (VarDef (TConst t) e) -> do
+  (VarDef (TConst _) e) -> do
     res <- runCGM [] (maybeM cgTypedE e)
     let initVal = case res of
           Just e -> valueText e
@@ -152,6 +142,7 @@ cgDef name local def = case def of
     tell ("@"++encodeName name++" = linker_private constant "++initVal++"\n")
   (VarDef t Nothing) -> do
     tell ("@"++encodeName name++" = global linker_private "++encodeType t++" undef\n")
+  (VarDef _ _) -> error ("Weird VarDef: "++show def)
 
 cgFunBody = cgStmts
 
@@ -239,9 +230,10 @@ cgExpr typ e = case e of
       _ -> return (mkValue ConstExpr typ ('@':encodeName name))
   (EArrToPtr (TypedE arrT arr)) -> do
     let (arrT',arrelem) = case arrT of
-          (TArray _ arrelem) -> (arrT, arrelem)
-          (TPtr arrT@(TArray _ arrelem)) -> (arrT, arrelem)
-    v <- cgExpr (TPtr arrT) arr
+          (TArray _ arrelem) -> (TPtr arrT, arrelem)
+          (TPtr (TArray _ arrelem)) -> (arrT, arrelem)
+          typ -> error ("EArrToPtr on something not array or ptr-to-array: "++show typ++" in "++show e)
+    v <- cgExpr arrT' arr
     lift (liftIO (printf "EArrToPtr: %s -> %s\n" (show e) (show typ)))
     case valueKind v of
       ConstExpr -> return (mkValue ConstExpr (TPtr arrelem) ("getelementptr ("++valueText v++", i1 0, i1 0)"))

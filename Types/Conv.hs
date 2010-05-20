@@ -94,7 +94,7 @@ intNotZero a b = error ("intNotZero: to "++show a++" from "++show b)
 ptrNotNull TBool from = TypedE TBool . EBinary (initialPos "<generated>",NotEqual) (TypedE from ENullPtr)
 ptrNotNull a b = error ("ptrNotNull: to "++show a++" from "++show b)
 
-arrToPtr to (TArray _ _) expr = TypedE to (EArrToPtr expr)
+arrToPtr to (TArray _ _) (TypedE _ (EDeref expr@(TypedE _ _))) = TypedE to (EArrToPtr expr)
 
 removeConst = Search $ \t -> case t of
   (TConst t') -> [(t',retype)]

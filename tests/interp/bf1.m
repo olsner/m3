@@ -115,9 +115,11 @@ int main(int argc, [const [const char]] argv)
 
 	run(buffer, size);
 
-	//if (close(fd) < 0)
+	if (close(fd) < 0)
 	{
 		perror("close");
 		return 1;
 	}
+
+	return 0;
 }

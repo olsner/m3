@@ -242,10 +242,12 @@ cgExpr typ e = case e of
     loc' <- cgTypedE loc
     withFresh typ (=% load loc')
   (EAssignment (_,assignOp) lval rval) -> do
-    let (TypedE _ (EDeref loc)) = lval
+    let (TypedE typ (EDeref loc)) = lval
     lv <- cgTypedE loc
+    lval <- withFresh typ (=% load lv)
     rv <- cgTypedE rval
-    cgAssignOp assignOp rv lv
+    res <- cgAssignOp assignOp rv lval
+    store res lv
   (EBinary op x y) -> do
     xres <- cgTypedE x
     yres <- cgTypedE y
@@ -291,10 +293,8 @@ getBinopCode t = case t of
   Minus -> arithBinop t "sub"
   _ -> error ("getBinopCode: "++show t)
 
-cgAssignOp Assignment = store
-cgAssignOp PlusAssign = \rv lv -> do
-  lv' <- withFresh (valueType lv) $ (=% "add "++valueText lv++","++valueTextNoType rv)
-  store lv' lv
+cgAssignOp Assignment = \rv lv -> return rv
+cgAssignOp PlusAssign = \rv lv -> withFresh (valueType lv) $ (=% "add "++valueText lv++","++valueTextNoType rv)
 
 cgPostfixOp (_,Decrement) typ val = withFresh typ $ (=% "sub "++valueText val++", 1")
 cgPostfixOp (_,Increment) typ val = withFresh typ $ (=% "add "++valueText val++", 1")

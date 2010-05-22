@@ -30,6 +30,7 @@ module interp::bf1;
 		p = end;
 		while (p >= start)
 		{
+			//printf("findloop backwards %p:%p:%p (%d/%c, %d)\n", start,p,end, *p, *p, nest);
 			if (*p == ']') nest++;
 			if (*p == '[') nest--;
 			if (!nest)
@@ -45,10 +46,13 @@ void run([const char] buffer, int size)
 	[const char] end = buffer + size;
 	[const char] ip = buffer;
 	[char] tape = cast<[[char]]>(malloc(512));
-	[char] tapep;
+	[char] tapep = tape;
+	memset(tape, 0, 512);
 	while (ip < end)
 	{
+		//printf("IP: %p of %p\n", ip, end);
 		int instr = *ip++;
+		//printf("Instruction: %d (%c)\n", instr, instr);
 		if (instr == '>') tapep++;
 		else if (instr == '<') tapep--;
 		else if (instr == '+') (*tapep)++;
@@ -80,6 +84,7 @@ void run([const char] buffer, int size)
 			}
 		}
 	}
+	free(tape);
 }
 
 int main(int argc, [const [const char]] argv)
@@ -114,6 +119,7 @@ int main(int argc, [const [const char]] argv)
 	}
 
 	run(buffer, size);
+	free(buffer);
 
 	if (close(fd) < 0)
 	{

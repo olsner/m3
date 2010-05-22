@@ -163,7 +163,10 @@ brIf cond true false = line ("br "++valueText cond++", label %"++true++", label 
 label lbl m = tell (lbl++":\n") >> m
 getelementptr base xs = "getelementptr "++valueText base++","++valueTextList xs
 zero = mkValue ConstExpr TBool "0"
-one = mkValue ConstExpr TBool "1"
+one = mkValue ConstExpr TInt "1"
+minusOne = mkValue ConstExpr TInt "-1"
+bitcast value to = "bitcast " ++ valueText value ++ " to " ++ encodeType to
+trunc value to = "trunc " ++ valueText value ++ " to " ++ encodeType to
 
 cgStmt :: Statement TypedE -> CGM ()
 cgStmt stmt = case stmt of
@@ -251,7 +254,7 @@ cgExpr typ e = case e of
   (EBinary op x y) -> do
     xres <- cgTypedE x
     yres <- cgTypedE y
-    withFresh typ (=% getBinopCode (snd op) (fst op) typ xres yres)
+    getBinopCode (snd op) (fst op) typ xres yres
   (EArrayIndex arr@(TypedE (TPtr elem) _) ix) -> do
     arr' <- cgTypedE arr
     ix' <- cgTypedE ix
@@ -264,26 +267,31 @@ cgExpr typ e = case e of
     res <- cgPostfixOp op typ val
     store res lv
     return val
+  (EUnary op val) -> cgUnary typ op =<< cgTypedE val
   (ECast to expr@(TypedE from _)) -> do
     lv <- cgTypedE expr
     cgCast to from lv
   ENullPtr -> return (mkValue ConstExpr TNullPtr "null")
   other -> error ("Unimplemented expression: "++show other)
 
-icmp op x y = unwords ["icmp",op,valueText x++",",valueTextNoType y]
+icmp op typ x y = withFresh typ (=% unwords ["icmp",op,valueText x++",",valueTextNoType y])
 cmpBinop tok op pos typ = case typ of 
-  TInt -> icmp op
-  TBool -> icmp op
-  TChar -> icmp op
+  TInt -> icmp op typ
+  TBool -> icmp op typ
+  TChar -> icmp op typ
   --TFloat -> fcmp op
   _ -> error (show pos++": "++show tok++" operator only supports ints, attempted on "++show typ)
 arithBinop tok op pos typ = case typ of
   TInt -> f op
   TChar -> f op
-  (TPtr t) -> \x y -> getelementptr x [y]
+  (TPtr _) -> \x y -> case op of
+    "add" -> withFresh typ (=% getelementptr x [y])
+    "sub" -> do
+      incr <- withFresh TInt (=% "sub "++encodeType (valueType y)++" 0,"++valueTextNoType y)
+      withFresh typ (=% getelementptr x [incr])
   _ -> error (show pos++": "++show tok++" operator only supports ints, attempted on "++show typ)
   where
-    f op x y = unwords [op,valueText x,valueTextNoType y]
+      f op x y = withFresh typ (=% unwords [op,valueText x,",",valueTextNoType y])
 getBinopCode t = case t of
   Equal -> cmpBinop t "eq"
   NotEqual -> cmpBinop t "ne"
@@ -296,18 +304,29 @@ getBinopCode t = case t of
 cgAssignOp Assignment = \rv lv -> return rv
 cgAssignOp PlusAssign = \rv lv -> withFresh (valueType lv) $ (=% "add "++valueText lv++","++valueTextNoType rv)
 
+cgPostfixOp (_,Decrement) typ@(TPtr _) val = withFresh typ $ (=% getelementptr val [minusOne])
+cgPostfixOp (_,Increment) typ@(TPtr _) val = withFresh typ $ (=% getelementptr val [one])
 cgPostfixOp (_,Decrement) typ val = withFresh typ $ (=% "sub "++valueText val++", 1")
 cgPostfixOp (_,Increment) typ val = withFresh typ $ (=% "add "++valueText val++", 1")
 
 cgCast to@(TPtr _) (TPtr _) lv = do
-  withFresh to (=% "bitcast "++valueText lv)
+  withFresh to (=% bitcast lv to)
 cgCast to@(TPtr _) TInt lv = do
   withFresh to (=% "inttoptr "++valueText lv)
 cgCast to@TInt (TPtr _) lv = do
   withFresh to (=% "ptrtoint "++valueText lv)
 cgCast to@(TPtr _) TNullPtr lv = cgCast to (TPtr TVoid) lv
-cgCast to@TInt TChar lv = withFresh to (=% "signext "++valueText lv)
-cgCast to from _ = error ("Unimplemented cast from "++show from++" to "++show to)
+cgCast to@TInt TChar lv = withFresh to (=% "sext "++valueText lv++" to "++encodeType to)
+cgCast to@TInt TBool lv = withFresh to (=% "sext "++valueText lv++" to "++encodeType to)
+cgCast to@TChar TInt lv = withFresh to (=% trunc lv to)
+cgCast to from lv
+  | to == from = return lv
+  | otherwise = error ("cgCast: Unimplemented cast from "++show from++" to "++show to)
+
+cgUnary typ (pos,LogicalNot) = \val -> do
+    v <- getBinopCode Equal pos typ zero val
+    cgCast typ TBool v
+cgUnary typ (_pos,Minus) = \val -> withFresh typ (=% "sub "++encodeType typ++" 0, "++valueTextNoType val)
 
 type SF a = CounterT Int (SetWriter (Map String Int)) a
 runStringFinder :: SF a -> (a,Map String Int)

@@ -224,8 +224,8 @@ tcExpr e = case outF e of
     e@(TypedE (TPtr typ) _) <- tcExpr ptr
     return (TypedE typ (EDeref e))
   (EUnary op e) -> do
-    tcUnary (snd op) e
-    --return (TypedE res (EUnary op te))
+    te@(TypedE res _) <- tcUnary (snd op) e
+    return (TypedE res (EUnary op te))
   ENullPtr -> return (TypedE TNullPtr ENullPtr)
   ECast to e -> do
     typed@(TypedE typ _) <- tcExpr e
@@ -241,7 +241,9 @@ checkCast _ _ = False
 relopRule x = return (TBool, x)
 -- FIXME This only handles pointer arithmetic where the *right-hand* argument is a pointer, not the flipped one...
 additiveRule TInt = return (TInt,TInt)
+additiveRule TChar = return (TChar,TChar)
 additiveRule (TPtr t) = return (TPtr t, TInt)
+additiveRule other = error ("additiveRule: unhandled type "++show other)
 
 binopTypeRule Equal = relopRule
 binopTypeRule LessThan = relopRule
@@ -251,3 +253,4 @@ binopTypeRule Minus = additiveRule
 binopTypeRule other = \_ -> tcError ("Unhandled binary operator: "++show other)
 
 tcUnary LogicalNot = tcExprAsType TBool
+tcUnary Minus = tcExpr -- TODO Check that it's something that we can do arithmetic on...

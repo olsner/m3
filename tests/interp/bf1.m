@@ -20,7 +20,7 @@ module interp::bf1;
 			if (*p == '[') nest++;
 			if (*p == ']') nest--;
 			if (!nest)
-				return p;
+				return p+1;
 			p++;
 		}
 		return null;
@@ -33,8 +33,8 @@ module interp::bf1;
 			if (*p == ']') nest++;
 			if (*p == '[') nest--;
 			if (!nest)
-				return p;
-			p++;
+				return p+1;
+			p--;
 		}
 		return null;
 	}

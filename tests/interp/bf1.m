@@ -1,5 +1,6 @@
 import std::io;
 import std::mem;
+import std::lib;
 
 import unix::io;
 
@@ -57,6 +58,11 @@ void run([const char] buffer, int size)
 			if (!*tapep)
 			{
 				ip = findloop(ip, end, true);
+				if (!ip)
+				{
+					printf("Loop start: didn't find the end\n");
+					exit(1);
+				}
 			}
 		}
 		else if (instr == ']')
@@ -64,6 +70,11 @@ void run([const char] buffer, int size)
 			if (*tapep)
 			{
 				ip = findloop(buffer, ip-2, false);
+				if (!ip)
+				{
+					printf("Loop end: didn't find the start\n");
+					exit(1);
+				}
 			}
 		}
 	}

@@ -1,0 +1,4 @@
+./test.sh conv1
+>>>2
+foo bar: Success
+>>>= 0

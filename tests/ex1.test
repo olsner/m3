@@ -1,0 +1,4 @@
+./test.sh ex1
+>>>
+Hello world: 7
+>>>= 0

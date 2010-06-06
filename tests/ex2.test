@@ -1,0 +1,4 @@
+./test.sh ex2
+>>>
+Hello world: 42 (And another string argument)
+>>>= 0

@@ -1,0 +1,5 @@
+./test.sh ex3
+>>>
+Hello world: 42 (And another string argument)
+Let's store a string in a variable
+>>>= 0

@@ -1,0 +1,21 @@
+./test_main.sh
+<<<
+int a = 1, b = 2, c = 3, d = 0;
+return a+b+c+d;
+>>>
+>>>= 6
+
+./test_main.sh
+<<<
+if (true)
+{
+  int a = 0;
+  return a;
+}
+else
+{
+  int a = 1;
+  return a;
+}
+>>>
+>>>= 0

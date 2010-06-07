@@ -1,0 +1,6 @@
+./test_main.sh
+<<<
+int temp = -200;
+temp += 200;
+return temp;
+>>>= 0

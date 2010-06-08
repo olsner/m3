@@ -56,6 +56,6 @@ pVarDecl :: (Type -> Name -> Maybe ExprF -> a -> a) -> Parser Token (a -> a)
 pVarDecl f = mkVarDecl f <$> pType <*> sepBy1 ((,) <$> pName <*> optional pVarInitializer) (token Comma) <* token Semicolon
 mkVarDecl :: Show e => (Type -> Name -> Maybe e -> a -> a) -> Type -> [(Name,Maybe e)] -> a -> a
 mkVarDecl varDecl typ vars z = foldr (uncurry (varDecl typ)) z vars
-pVarInitializer = token Assignment *> pExpression
+pVarInitializer = token Assignment *> pInitializationExpression
 pElse = keyword "else" *> pStatement
 

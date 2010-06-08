@@ -1,6 +1,6 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 
-module Grammar.Expr (pExpression, pExpressionList) where
+module Grammar.Expr (pExpression, pExpressionList, pInitializationExpression) where
 
 import Control.Applicative
 import Control.Functor.Fix
@@ -29,6 +29,9 @@ pExpressionList = listOf pAssignmentExpression
 
 pExpression :: Parser Token ExprF
 pExpression = pAssignmentExpression <**?> (token Comma *> (flip eSeq <$> pExpression))
+
+-- pExpression without (top-level) assignmnt or sequence expressions
+pInitializationExpression = pLogicalOrExpression <**?> pConditionalSuffix
 
 pAssignmentExpression = pLogicalOrExpression <**?> choice [pConditionalSuffix,suffix]
   where

@@ -1,4 +1,10 @@
-./test.sh conv1
+./test_main.sh std::io
+<<<
+	char[256] buf;
+	snprintf(buf, 256, "foo bar\n");
+	// Test that char-array can be converted to pointer-to-char and then to pointer-to-const-char
+	printf(buf);
+	return 0;
 >>>
 foo bar
 >>>= 0

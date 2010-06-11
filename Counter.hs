@@ -17,8 +17,11 @@ instance Monad m => Applicative (CounterT s m) where
   pure = return
   (<*>) = ap
 
---instance MonadReader r m => MonadReader r (CounterT s m) where
---instance MonadIO m => MonadIO (CounterT s m) where
+instance MonadReader r m => MonadReader r (CounterT s m) where
+  ask = lift ask
+  local fun m = CounterT (local fun (unCounterT m))
+instance MonadIO m => MonadIO (CounterT s m) where
+  liftIO = lift . liftIO
 instance (MonadWriter w m) => MonadWriter w (CounterT s m) where
   tell = lift . tell
   listen m = CounterT (listen (unCounterT m))

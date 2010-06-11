@@ -3,7 +3,6 @@
 module Grammar.Expr (pExpression, pExpressionList, pInitializationExpression) where
 
 import Control.Applicative
-import Control.Functor.Fix
 
 import Data.Maybe
 

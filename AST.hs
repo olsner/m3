@@ -2,7 +2,6 @@
 
 module AST where
 
-import Control.Functor.Fix
 import Control.Monad.RWS
 
 import Data.Data (Data,Typeable)
@@ -101,7 +100,8 @@ data Expr e =
   | ENullPtr
   deriving (Show,Eq,Data,Typeable)
 
-type ExprF = FixF Expr
+data ExprF = InF { outF :: Expr ExprF } deriving (Eq,Data,Typeable)
+
 instance Show ExprF where
   showsPrec d (InF e) = showsPrec (d+1) e
 

@@ -7,7 +7,6 @@ import Control.Monad.Identity
 -- "local" is used as a variable name a lot in this file, let's not get it confused with the Reader definition
 import Control.Monad.Reader hiding (local)
 import Control.Monad.State
-import Control.Functor.Fix
 
 import Data.Maybe
 import Data.Map (Map)

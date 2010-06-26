@@ -21,6 +21,8 @@ import AST
 import CppToken
 import Types.Conv
 
+import Counter -- Also implements Applicative for StateT o.o
+
 data VarType = Const | Global | NonConst deriving (Show)
 data Binding = Var VarType Type | Alias Name deriving (Show)
 type ModBinding = Either (Unit ExprF) (Unit TypedE)
@@ -28,11 +30,7 @@ type ModMap = Map Name ModBinding
 data TCState = TCState { bindings :: Map Name Binding, modules :: ModMap }
 type TC = StateT TCState
 
-instance (Monad m) => Applicative (TC m) where
-  pure = return
-  (<*>) = ap
-
-runTC m mods = runStateT m (TCState { bindings = M.empty, modules = mods })
+runTC m = runStateT m . TCState M.empty
 
 tcError :: String -> TC m a
 tcError msg = error msg

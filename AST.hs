@@ -17,6 +17,9 @@ import CppToken (Token)
 
 newtype Name = QualifiedName [String] deriving (Show,Eq,Ord,Data,Typeable)
 qualifyName (QualifiedName xs) (QualifiedName ys) = QualifiedName (xs++ys)
+-- Used for e.g. renaming passes or anything that wants to add suffixes to
+-- names
+qualifyName1 (QualifiedName xs) x = QualifiedName (xs++[x])
 encodeName (QualifiedName xs) = intercalate "__" xs
 
 -- A unit is a set of imports and *one* declaration of the toplevel entity.

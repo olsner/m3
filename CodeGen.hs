@@ -147,7 +147,7 @@ cgDef name local def = case def of
 cgFunBody = cgStmts
 
 cgStmts :: [Statement TypedE] -> CGM ()
-cgStmts code = mapM_ cgStmt code
+cgStmts code = mapM_ (cgStmt . runVC . renameVariables) code
 
 infixl 1 =%
 line str = tell ('\t':str++"\n")
@@ -327,6 +327,24 @@ cgUnary typ (pos,LogicalNot) = \val -> do
     v <- getBinopCode Equal pos typ zero val
     cgCast typ TBool v
 cgUnary typ (_pos,Minus) = \val -> withFresh typ (=% "sub "++encodeType typ++" 0, "++valueTextNoType val)
+
+type VC a = CounterT Int (Reader (Map Name Name)) a
+runVC :: VC a -> a
+runVC = flip runReader M.empty . runCounterT 0
+renameVariables :: Statement TypedE -> VC (Statement TypedE)
+renameVariables = gmapM (mkM f `extM` g)
+  where
+    f :: Statement TypedE -> VC (Statement TypedE)
+    f (VarDecl name typ init statement) = do
+      existingMapping <- asks (M.lookup name)
+      newName <- case existingMapping of
+        Just name' -> qualifyName1 name . show <$> getAndInc
+        Nothing -> return name
+      VarDecl newName typ init <$> local (M.insert name newName) (renameVariables statement)
+    f x = renameVariables x
+    g :: TypedE -> VC TypedE
+    g (TypedE t (EVarRef name)) = TypedE t . EVarRef <$> asks (fromMaybe name . M.lookup name)
+    g x = return x
 
 type SF a = CounterT Int (SetWriter (Map String Int)) a
 runStringFinder :: SF a -> (a,Map String Int)

@@ -1,4 +1,5 @@
 import Control.Applicative
+import Control.Arrow
 import Control.Monad.Reader
 import Control.Monad.State
 
@@ -17,6 +18,7 @@ import CppLexer (lexCpp)
 import Parser
 import CodeGen
 import TypeCheck (typecheck)
+import ScopeCheck (scopecheck)
 import Grammar (pUnit, pName)
 
 parse path = do
@@ -86,8 +88,13 @@ doMain name = do
   mods <- runMod M.empty (processImport name)
   process name mods
 
+mapMapM f m = M.fromList <$> mapM (secondM f) (M.toList m)
+  where
+    secondM f (a,b) = f b >>= \b' -> return (a,b')
+
 process :: Name -> ModMap -> IO ()
-process name mods = do
-  mods' <- runReaderT (typecheck name) mods
-  mapM_ print (M.toList mods')
-  runReaderT (printLLVM name) mods'
+process name mods'' = do
+  mods' <- mapMapM scopecheck mods''
+  mods <- runReaderT (typecheck name) mods'
+  mapM_ print (M.toList mods)
+  runReaderT (printLLVM name) mods

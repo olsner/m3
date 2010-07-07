@@ -47,8 +47,6 @@ data Show e => Statement e =
   | WhileStmt e (Statement e)
   deriving (Show,Eq,Data,Typeable)
 
-type CompoundStatement e = [Statement e]
-
 data Decl e = Decl Name (Def e) deriving (Show,Eq,Data,Typeable)
 
 data FormalParam =
@@ -59,7 +57,7 @@ type FormalParams = [FormalParam]
 
 data Def e =
     ModuleDef [Decl e]
-  | FunctionDef { funReturnType :: Type, funArgs :: FormalParams, funCode :: CompoundStatement e }
+  | FunctionDef { funReturnType :: Type, funArgs :: FormalParams, funCode :: Statement e }
   | ExternalFunction { funLinkage :: Maybe String, funReturnType :: Type, funArgs :: FormalParams }
   | VarDef Type (Maybe e)
 

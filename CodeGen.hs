@@ -144,10 +144,8 @@ cgDef name local def = case def of
     tell ("@"++encodeName name++" = global linker_private "++encodeType t++" undef\n")
   (VarDef _ _) -> error ("Weird VarDef: "++show def)
 
-cgFunBody = cgStmts
-
-cgStmts :: [Statement TypedE] -> CGM ()
-cgStmts code = mapM_ (cgStmt . runVC . renameVariables) code
+cgFunBody :: MonadIO m => Statement TypedE -> CGMT m ()
+cgFunBody = cgStmt . runVC . renameVariables
 
 infixl 1 =%
 line str = tell ('\t':str++"\n")

@@ -118,7 +118,7 @@ tcDef name local def = traceM ("tcDef "++show name++": "++show def) $ case def o
     when (invalidFormalParams args) (tcError "Malformed formal parameter list")
     addBinding name (Var NonConst (TFunction retT args))
     addBinding local (Alias name)
-    FunctionDef retT args <$> foldr withArg (tcStmts retT args code) args
+    FunctionDef retT args <$> foldr withArg (tcStmt retT args code) args
   (ExternalFunction linkage ret args) -> do
     addBinding name (Var NonConst (TFunction ret args))
     addBinding local (Alias name)
@@ -134,7 +134,6 @@ maybeM :: Applicative m => (a -> m b) -> Maybe a -> m (Maybe b)
 maybeM f (Just x) = Just <$> f x
 maybeM _ Nothing = pure Nothing
 
-tcStmts retT args = mapM (tcStmt retT args)
 
 tcStmt :: MonadIO m => Type -> [FormalParam] -> Statement ExprF -> TC m (Statement TypedE)
 tcStmt ret args stmt = traceM ("tcStmt "++show stmt) $ case stmt of

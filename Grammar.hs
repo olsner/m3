@@ -38,7 +38,7 @@ pFormalParamList = inParens (listOf $ choice [pFormalParam, pVarargParam])
 pFormalParam = FormalParam <$> pType <*> optional pSimpleName
 pVarargParam = VarargParam <$ token Ellipsis
 
-pCompoundStatement = inBraces (commit (many pStatement))
+pCompoundStatement = CompoundStmt <$> inBraces (commit (many pStatement))
 pStatement = choice
   [token Semicolon $> EmptyStmt
   ,ReturnStmt <$> (keyword "return" *> pExpression <* commit (token Semicolon))
@@ -47,7 +47,7 @@ pStatement = choice
   -- Note: This syntax defines the scope of a variable as "everything until the next closing brace. I this (really) correct? No it isn't...
   -- TODO: What happens with e.g. if (foo) type var; !?
   ,pVarDecl (flip VarDecl) <*> commit (CompoundStmt <$> many pStatement <* lookToken CloseBrace)
-  ,CompoundStmt <$> pCompoundStatement
+  ,pCompoundStatement
   ,keyword "if" *> commit (IfStmt <$> inParens pExpression <*> pStatement <*> (fromMaybe EmptyStmt <$> optional pElse))
   ,keyword "while" *> commit (WhileStmt <$> inParens pExpression <*> pStatement)
   ] <|> failParse "Out of luck in pStatement"

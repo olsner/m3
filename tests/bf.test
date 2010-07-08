@@ -1,0 +1,5 @@
+./test.sh interp::bf1 hw.bf
+<<<
+>>>
+Hello World!
+>>>= 0

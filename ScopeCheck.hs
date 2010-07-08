@@ -3,7 +3,6 @@
 module ScopeCheck (scopecheck) where
 
 import Control.Applicative
-import Control.Arrow
 import Control.Monad.Identity
 -- "local" is used as a variable name a lot in this file, let's not get it confused with the Reader definition
 import Control.Monad.Reader hiding (local)
@@ -17,14 +16,7 @@ import qualified Data.Map as M
 
 import Data.Generics hiding (Unit)
 
-import Debug.Trace
-
-import Text.Printf
-import Text.ParserCombinators.Parsec.Pos
-
 import AST
-import CppToken
-import Types.Conv
 
 import Counter -- o.o Also implements Applicative for StateT
 
@@ -65,8 +57,6 @@ inNewScope m = do
   if d' /= d + 1 then error "scope depth error... :(" else return ()
   modify (\s -> s { depth = d, nameMap = oldNameMap })
   return x
-
-modifyUsed f = modify (\s -> s { used = f (used s) })
 
 mapName name newName = modify (\s -> s { used = S.insert name (used s), nameMap = M.insert name (depth s, newName) (nameMap s) })
 addName name = modify (\s -> s { nameMap = M.insert name (depth s, name) (nameMap s) })
@@ -116,11 +106,11 @@ getVars (VarDecl vs:xs) = (vs++ws, ys) where (ws,ys) = getVars xs
 getVars xs = ([],xs)
 
 mapCont :: (a -> ([a] -> [a])) -> [a] -> [a]
-mapCont k [] = []
+mapCont _ [] = []
 mapCont k (x:xs) = k x (mapCont k xs)
 
 convertVarDecl1 :: Statement ExprF -> Statement ExprF
-convertVarDecl1 stmt = case convertVarDecls stmt [] of [x] -> x
+convertVarDecl1 stmt = case convertVarDecls stmt [] of [x] -> x; _ -> error "convertVarDecl1: One statement became several :("
 
 -- TODO SYB:ify this - for all "other" statements: keep structure of everything that isn't a Statement, apply convertVarDecl1 to every statement
 convertVarDecls :: Statement ExprF -> ([Statement ExprF] -> [Statement ExprF])

@@ -75,12 +75,15 @@ addName name = modify (\s -> s { nameMap = M.insert name (depth s, name) (nameMa
 -- (1) Check that no CompoundStmt defines the same variable twice, respecting shadowing. (TODO: Detect shadowing so that we can optionally warn about it)
 -- (2) Convert all VarDecl's to nested CompoundStmt's
 -- (2.1) Optimize runs of VarDecl's into a single CompoundStmt
--- (3) Apply renaming of shadowed variables
+-- (3) Apply renaming of shadowed variables & variables reused in unrelated scopes within a function
 -- (4?) Correctness check: no VarDecl nodes remain, no CompoundStmt has duplicate names
 
 -- define our own top-down traversal...
 sc :: MonadIO m => Statement ExprF -> SC m (Statement ExprF)
-sc = preCheck >=> traceFunM "convertVarDecl1" (return . convertVarDecl1) -- >=> renameShadowed >=> postCheck
+sc =
+  preCheck >=>
+  {-traceFunM "convertVarDecl1"-} (return . convertVarDecl1) >=>
+  {-traceFunM "renameShadowed"-} renameShadowed -- >=> postCheck
 
 -- FIXME This should run in its own State (Int,Map Name Int), the state produced
 -- is not interesting for the outer checking step
@@ -126,3 +129,36 @@ convertVarDecls stmt = case stmt of
   (VarDecl vars) -> (:[]) . CompoundStmt vars
   (IfStmt c t f) -> (IfStmt c (convertVarDecl1 t) (convertVarDecl1 f):)
   x -> (:) x
+
+
+renameShadowed :: MonadIO m => Statement ExprF -> SC m (Statement ExprF)
+renameShadowed = f -- traceFunM "renameShadowed" f
+  where
+    rec = gmapM (mkM f `extM` g)
+    inNewScope_ x = inNewScope (rec x)
+    f :: MonadIO m => Statement ExprF -> SC m (Statement ExprF)
+    f (CompoundStmt vars stmts) = inNewScope $ do
+      vars' <- forM vars $ \(typ,name,init) -> do
+        traceIO =<< gets (show . used)
+        exists <- gets (S.member name . used)
+        traceIO (show name++": "++show exists)
+        newName <- if exists then qualifyName1 name . show <$> lift getAndInc else return name
+        mapName name newName
+        newInit <- case init of Just x -> Just <$> g x; Nothing -> return Nothing
+        -- TODO Make a testcase for shadowed-renaming in initializers
+        return (typ,newName,newInit)
+      CompoundStmt vars' <$> mapM f stmts
+    f (IfStmt cond t f) = IfStmt <$> g cond <*> inNewScope (renameShadowed t) <*> inNewScope (renameShadowed f)
+    f (VarDecl vars) = scError "VarDecl left over from rewrite step!"
+    f x = rec x
+
+    g :: MonadIO m => ExprF -> SC m ExprF
+    g = everywhereM (mkM g_)
+    g_ :: MonadIO m => ExprF -> SC m ExprF
+    g_ expr = case outF expr of
+      (EVarRef name) -> do
+        existingVar <- gets (M.lookup name . nameMap)
+        case existingVar of
+          Just (d,name) -> return (InF (EVarRef name))
+          Nothing -> scWarn "WARNING: Use of undeclared variable" >> return (InF (EVarRef name))
+      _ -> rec expr

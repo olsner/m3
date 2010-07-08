@@ -81,25 +81,27 @@ sc =
 preCheck :: MonadIO m => Statement ExprF -> SC m (Statement ExprF)
 preCheck = f -- traceFunM "preCheck" f
   where
-    rec = gmapM (mkM f)
-    inNewScope_ x = inNewScope (rec x)
     f :: MonadIO m => Statement ExprF -> SC m (Statement ExprF)
-    f (CompoundStmt [] stmts) = CompoundStmt [] <$> mapM f stmts
+    f (CompoundStmt [] stmts) = CompoundStmt [] <$> mapM preCheck stmts
     f (IfStmt cond t f) = IfStmt cond <$> inNewScope (preCheck t) <*> inNewScope (preCheck f)
+    f (WhileStmt cond body) = WhileStmt cond <$> inNewScope (preCheck body)
     f stmt@(VarDecl vars) = do
       d <- gets depth
       --traceIO ("VarDecl: "++show stmt)
-      forM_ vars $ \(typ,name,init) -> do
+      forM_ vars $ \(_typ,name,_init) -> do
         existingVar <- gets (M.lookup name . nameMap)
         addName name
         --traceIO ("existingVar "++show name++": "++show existingVar)
-        newVar <- gets (M.lookup name . nameMap)
+        --newVar <- gets (M.lookup name . nameMap)
         --traceIO ("newVar "++show name++": "++show newVar)
         case existingVar of
-          Just (d',name') -> if d == d' then scError "Redeclaration at same depth." else scWarn "WARNING: Declared variable shadows outer variable" >> return ()
+          Just (d',_) -> if d == d' then scError "Redeclaration at same depth." else scWarn "WARNING: Declared variable shadows outer variable" >> return ()
           Nothing -> return ()
       return stmt
-    f x = rec x
+    f x@(ExprStmt _) = return x
+    f x@(ReturnStmt _) = return x
+    f EmptyStmt = return EmptyStmt
+    f x = scError ("Unknown statement in scope check: "++show x)
 
 getVars :: Show e => [Statement e] -> ([(Type,Name,Maybe e)], [Statement e])
 getVars (VarDecl vs:xs) = (vs++ws, ys) where (ws,ys) = getVars xs
@@ -118,14 +120,13 @@ convertVarDecls stmt = case stmt of
   (CompoundStmt [] stmts) -> let (vars,tail) = getVars stmts in \k -> CompoundStmt vars (mapCont convertVarDecls tail) : k
   (VarDecl vars) -> (:[]) . CompoundStmt vars
   (IfStmt c t f) -> (IfStmt c (convertVarDecl1 t) (convertVarDecl1 f):)
+  (WhileStmt c body) -> (WhileStmt c (convertVarDecl1 body):)
   x -> (:) x
 
 
 renameShadowed :: MonadIO m => Statement ExprF -> SC m (Statement ExprF)
 renameShadowed = f -- traceFunM "renameShadowed" f
   where
-    rec = gmapM (mkM f `extM` g)
-    inNewScope_ x = inNewScope (rec x)
     f :: MonadIO m => Statement ExprF -> SC m (Statement ExprF)
     f (CompoundStmt vars stmts) = inNewScope $ do
       vars' <- forM vars $ \(typ,name,init) -> do
@@ -134,21 +135,28 @@ renameShadowed = f -- traceFunM "renameShadowed" f
         traceIO (show name++": "++show exists)
         newName <- if exists then qualifyName1 name . show <$> lift getAndInc else return name
         mapName name newName
-        newInit <- case init of Just x -> Just <$> g x; Nothing -> return Nothing
+        newInit <- case init of
+          Just x -> Just <$> g x
+          Nothing -> return Nothing
         -- TODO Make a testcase for shadowed-renaming in initializers
         return (typ,newName,newInit)
-      CompoundStmt vars' <$> mapM f stmts
+      CompoundStmt vars' <$> mapM renameShadowed stmts
     f (IfStmt cond t f) = IfStmt <$> g cond <*> inNewScope (renameShadowed t) <*> inNewScope (renameShadowed f)
-    f (VarDecl vars) = scError "VarDecl left over from rewrite step!"
-    f x = rec x
+    f (WhileStmt cond body) = WhileStmt <$> g cond <*> inNewScope (renameShadowed body)
+    f (VarDecl _) = scError "VarDecl left over from rewrite step!"
+    f (ExprStmt e) = ExprStmt <$> g e
+    f (ReturnStmt e) = ReturnStmt <$> g e
+    f EmptyStmt = return EmptyStmt
+    f ReturnStmtVoid = return ReturnStmtVoid
+    --f x = scError ("Unhandled statement: "++show x)
 
-    g :: MonadIO m => ExprF -> SC m ExprF
     g = everywhereM (mkM g_)
     g_ :: MonadIO m => ExprF -> SC m ExprF
     g_ expr = case outF expr of
       (EVarRef name) -> do
         existingVar <- gets (M.lookup name . nameMap)
-        case existingVar of
-          Just (d,name) -> return (InF (EVarRef name))
-          Nothing -> scWarn "WARNING: Use of undeclared variable" >> return (InF (EVarRef name))
-      _ -> rec expr
+        newName <- case existingVar of
+          Just (_,name) -> return name
+          Nothing -> scWarn "WARNING: Use of undeclared variable" >> return name
+        return (InF (EVarRef newName))
+      x -> InF <$> g x

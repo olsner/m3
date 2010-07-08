@@ -81,7 +81,7 @@ addName name = modify (\s -> s { nameMap = M.insert name (depth s, name) (nameMa
 
 -- define our own top-down traversal...
 sc :: MonadIO m => Statement ExprF -> SC m (Statement ExprF)
-sc = preCheck -- >=> convertVarDecls >=> renameShadowed >=> postCheck
+sc = preCheck >=> traceFunM "convertVarDecl1" (return . convertVarDecl1) -- >=> renameShadowed >=> postCheck
 
 -- FIXME This should run in its own State (Int,Map Name Int), the state produced
 -- is not interesting for the outer checking step
@@ -109,3 +109,21 @@ preCheck = f -- traceFunM "preCheck" f
       return stmt
     f x = rec x
 
+getVars :: Show e => [Statement e] -> ([(Type,Name,Maybe e)], [Statement e])
+getVars (VarDecl vs:xs) = (vs++ws, ys) where (ws,ys) = getVars xs
+getVars xs = ([],xs)
+
+mapCont :: (a -> ([a] -> [a])) -> [a] -> [a]
+mapCont k [] = []
+mapCont k (x:xs) = k x (mapCont k xs)
+
+convertVarDecl1 :: Statement ExprF -> Statement ExprF
+convertVarDecl1 stmt = case convertVarDecls stmt [] of [x] -> x
+
+-- TODO SYB:ify this - for all "other" statements: keep structure of everything that isn't a Statement, apply convertVarDecl1 to every statement
+convertVarDecls :: Statement ExprF -> ([Statement ExprF] -> [Statement ExprF])
+convertVarDecls stmt = case stmt of
+  (CompoundStmt [] stmts) -> let (vars,tail) = getVars stmts in \k -> CompoundStmt vars (mapCont convertVarDecls tail) : k
+  (VarDecl vars) -> (:[]) . CompoundStmt vars
+  (IfStmt c t f) -> (IfStmt c (convertVarDecl1 t) (convertVarDecl1 f):)
+  x -> (:) x

@@ -145,7 +145,7 @@ cgDef name local def = case def of
   (VarDef _ _) -> error ("Weird VarDef: "++show def)
 
 cgFunBody :: MonadIO m => Statement TypedE -> CGMT m ()
-cgFunBody = cgStmt . runVC . renameVariables
+cgFunBody = cgStmt
 
 infixl 1 =%
 line str = tell ('\t':str++"\n")
@@ -326,23 +326,31 @@ cgUnary typ (pos,LogicalNot) = \val -> do
     cgCast typ TBool v
 cgUnary typ (_pos,Minus) = \val -> withFresh typ (=% "sub "++encodeType typ++" 0, "++valueTextNoType val)
 
-type VC a = CounterT Int (Reader (Map Name Name)) a
+{-type VC a = CounterT Int (State (Set Name, Map Name Name)) a
 runVC :: VC a -> a
-runVC = flip runReader M.empty . runCounterT 0
+runVC = flip evalState (S.empty,M.empty) . runCounterT 0
 renameVariables :: Statement TypedE -> VC (Statement TypedE)
 renameVariables = gmapM (mkM f `extM` g)
   where
     f :: Statement TypedE -> VC (Statement TypedE)
-    f (VarDecl name typ init statement) = do
-      existingMapping <- asks (M.lookup name)
-      newName <- case existingMapping of
-        Just name' -> qualifyName1 name . show <$> getAndInc
-        Nothing -> return name
-      VarDecl newName typ init <$> local (M.insert name newName) (renameVariables statement)
+    f (CompoundStmt vars stmts) = do
+      oldMapping <- gets snd
+      mapM_ mapVariable vars
+      stmts' <- mapM renameVariables stmts
+      modify (second (const oldMapping))
+      return (CompoundStmt vars stmts')
     f x = renameVariables x
+    mapVariable (_,name,_) = do
+      existingMapping <- gets (S.member name . fst)
+      newName <- case existingMapping of
+        True -> qualifyName1 name . show <$> getAndInc
+        False -> return name
+      modify (first (S.insert newName))
+      modify (second (M.insert name newName))
     g :: TypedE -> VC TypedE
-    g (TypedE t (EVarRef name)) = TypedE t . EVarRef <$> asks (fromMaybe name . M.lookup name)
+    g (TypedE t (EVarRef name)) = TypedE t . EVarRef <$> gets (fromMaybe name . M.lookup name . snd)
     g x = return x
+-}
 
 type SF a = CounterT Int (SetWriter (Map String Int)) a
 runStringFinder :: SF a -> (a,Map String Int)

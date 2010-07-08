@@ -9,7 +9,7 @@ return a+b+c+d;
 <<<
 if (true)
 {
-  int a = 0;
+  int a = 7;
   return a;
 }
 else
@@ -18,7 +18,7 @@ else
   return a;
 }
 >>>
->>>= 0
+>>>= 7
 
 ./test_main.sh
 <<<

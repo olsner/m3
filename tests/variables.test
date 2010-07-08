@@ -19,3 +19,25 @@ else
 }
 >>>
 >>>= 0
+
+./test_main.sh
+<<<
+// Test shadowing: outer variable should not change due to changing the inner
+// one.
+int a = 0;
+if (true)
+{
+	int a;
+	a = 3;
+}
+return a;
+>>>= 0
+
+./test_main.sh
+<<<
+// Test scopechecking: should fail since we have two vardefs in the same scope
+// TODO: Make test check for proper error message
+int a;
+int a;
+return 0;
+>>>= 1

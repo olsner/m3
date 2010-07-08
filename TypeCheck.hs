@@ -134,6 +134,21 @@ maybeM :: Applicative m => (a -> m b) -> Maybe a -> m (Maybe b)
 maybeM f (Just x) = Just <$> f x
 maybeM _ Nothing = pure Nothing
 
+inScopeVars :: MonadIO m => [(Type,Name,Maybe ExprF)] -> ([(Type,Name,Maybe TypedE)] -> TC m a) -> TC m a
+inScopeVars vars m = f [] vars
+  where
+    -- f :: [(Name,Type,Maybe TypedE)] -> [(Name,Type,Maybe ExprF)] -> TC m a
+    f acc [] = m (reverse acc)
+    f acc (v@(_,name,_):vs) = inScope name var (tcVar v >>= \v' -> f (v':acc) vs)
+      where
+        var = case v of
+          (TConst typ,_,_) -> (Var Const typ)
+          (typ,_,_) -> (Var NonConst typ)
+
+    tcVar (typ,name,init) = (,,) typ name <$> g typ init
+    g typ@(TConst _) (Just init) = Just <$> tcExprAsType typ init
+    g typ@(TConst _) init = tcError "Constant variable without initializer"
+    g typ init = maybeM (tcExprAsType typ) init
 
 tcStmt :: MonadIO m => Type -> [FormalParam] -> Statement ExprF -> TC m (Statement TypedE)
 tcStmt ret args stmt = traceM ("tcStmt "++show stmt) $ case stmt of
@@ -142,14 +157,10 @@ tcStmt ret args stmt = traceM ("tcStmt "++show stmt) $ case stmt of
   ReturnStmtVoid | TVoid <- ret -> return ReturnStmtVoid
   ReturnStmtVoid     -> tcError ("void return in function returning "++show ret)
   EmptyStmt          -> return EmptyStmt
-  CompoundStmt [x]   -> tcStmt ret args x
-  CompoundStmt xs    -> CompoundStmt <$> mapM (tcStmt ret args) xs
-  VarDecl name (TConst typ) init x -> inScope name (Var Const typ) $
-    VarDecl name (TConst typ) <$> (Just <$> tcExprAsType typ (fromJust init)) <*> tcStmt ret args x
-  VarDecl name typ init x -> inScope name (Var NonConst typ) $
-    VarDecl name typ <$> maybeM (tcExprAsType typ) init <*> tcStmt ret args x
+  CompoundStmt vars xs    -> inScopeVars vars (\vars' -> CompoundStmt vars' <$> mapM (tcStmt ret args) xs)
   IfStmt cond t f -> IfStmt <$> tcExprAsType TBool cond <*> tcStmt ret args t <*> tcStmt ret args f
   WhileStmt cond body -> WhileStmt <$> tcExprAsType TBool cond <*> tcStmt ret args body
+  other -> tcError ("Unknown statement "++show other)
 
 traceShowRes str x = trace str $ trace (str++show x) x
 

@@ -18,7 +18,7 @@ pUnit = Unit <$> many pImport <*> (pModule <|> head <$> pFunction) <* eof
 
 pModule = keyword "module" *> (Decl <$> pName) <* token Semicolon <*> (ModuleDef . concat <$> commit (many pTopLevelDecl))
 pTopLevelDecl :: Parser Token [Decl ExprF]
-pTopLevelDecl = pExternalFunction <|> pFunction <|> (pVarDecl (\typ name e -> (Decl name (VarDef typ e):)) <*> pure [])
+pTopLevelDecl = pExternalFunction <|> pFunction <|> (pVarDecl (\typ name e -> Decl name (VarDef typ e)))
 
 pImport :: Parser Token Name
 pImport = keyword "import" *> pName <* token Semicolon
@@ -38,7 +38,7 @@ pFormalParamList = inParens (listOf $ choice [pFormalParam, pVarargParam])
 pFormalParam = FormalParam <$> pType <*> optional pSimpleName
 pVarargParam = VarargParam <$ token Ellipsis
 
-pCompoundStatement = CompoundStmt <$> inBraces (commit (many pStatement))
+pCompoundStatement = CompoundStmt [] <$> inBraces (commit (many pStatement))
 pStatement = choice
   [token Semicolon $> EmptyStmt
   ,ReturnStmt <$> (keyword "return" *> pExpression <* commit (token Semicolon))
@@ -46,16 +46,16 @@ pStatement = choice
   ,ExprStmt <$> pExpression <* commit (token Semicolon)
   -- Note: This syntax defines the scope of a variable as "everything until the next closing brace. I this (really) correct? No it isn't...
   -- TODO: What happens with e.g. if (foo) type var; !?
-  ,pVarDecl (flip VarDecl) <*> commit (CompoundStmt <$> many pStatement <* lookToken CloseBrace)
+  ,VarDecl <$> pVarDecl (,,)
   ,pCompoundStatement
   ,keyword "if" *> commit (IfStmt <$> inParens pExpression <*> pStatement <*> (fromMaybe EmptyStmt <$> optional pElse))
   ,keyword "while" *> commit (WhileStmt <$> inParens pExpression <*> pStatement)
   ] <|> failParse "Out of luck in pStatement"
 
-pVarDecl :: (Type -> Name -> Maybe ExprF -> a -> a) -> Parser Token (a -> a)
+pVarDecl :: (Type -> Name -> Maybe ExprF -> a) -> Parser Token [a]
 pVarDecl f = mkVarDecl f <$> pType <*> sepBy1 ((,) <$> pName <*> optional pVarInitializer) (token Comma) <* token Semicolon
-mkVarDecl :: Show e => (Type -> Name -> Maybe e -> a -> a) -> Type -> [(Name,Maybe e)] -> a -> a
-mkVarDecl varDecl typ vars z = foldr (uncurry (varDecl typ)) z vars
+mkVarDecl :: Show e => (Type -> Name -> Maybe e -> a) -> Type -> [(Name,Maybe e)] -> [a]
+mkVarDecl varDecl typ vars = map (uncurry (varDecl typ)) vars
 pVarInitializer = token Assignment *> pInitializationExpression
 pElse = keyword "else" *> pStatement
 

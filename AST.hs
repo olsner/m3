@@ -41,8 +41,11 @@ data Show e => Statement e =
   | ReturnStmt e
   | ReturnStmtVoid
   | ExprStmt e
-  | VarDecl Name Type (Maybe e) (Statement e)
-  | CompoundStmt [Statement e]
+  -- Special entry for *parsing* variable declarations - should be transformed
+  -- into nested CompoundStmt's after checking for conflicting variables as part of the
+  -- scopechecking.
+  | VarDecl [(Type,Name,Maybe e)]
+  | CompoundStmt [(Type,Name,Maybe e)] [Statement e]
   | IfStmt e (Statement e) (Statement e)
   | WhileStmt e (Statement e)
   deriving (Show,Eq,Data,Typeable)

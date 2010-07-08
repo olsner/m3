@@ -39,7 +39,7 @@ fresh = printf "%%t%d" <$> getAndInc
 freshLabel :: CGM String
 freshLabel = printf ".label%d" <$> getAndInc
 
-withLocal :: Name -> Value -> CGM a -> CGM a
+withLocal :: MonadIO m => Name -> Value -> CGMT m a -> CGMT m a
 withLocal name val m = do
   s <- get
   modify (M.insert (encodeName name) val)
@@ -166,22 +166,27 @@ minusOne = mkValue ConstExpr TInt "-1"
 bitcast value to = "bitcast " ++ valueText value ++ " to " ++ encodeType to
 trunc value to = "trunc " ++ valueText value ++ " to " ++ encodeType to
 
+withVars :: MonadIO m => [(Type,Name,Maybe TypedE)] -> CGMT m a -> CGMT m a
+withVars vars m = foldr withVar m vars
+withVar :: MonadIO m => (Type,Name,Maybe TypedE) -> CGMT m a -> CGMT m a
+withVar (TConst typ,name,init) m =
+  cgTypedE (fromJust init) >>= \initVal -> withLocal name initVal m
+withVar (typ,name,init) m =
+  maybeM cgTypedE init >>= \initVal -> do
+    let value = mkValue AllocaPtr (TPtr typ) ("%"++encodeName name)
+    withLocal name value $ do
+      value =% alloca typ
+      maybeM (\initVal -> store initVal value) initVal
+      m
+
 cgStmt :: Statement TypedE -> CGM ()
 cgStmt stmt = case stmt of
   EmptyStmt -> return ()
   (ReturnStmt e) -> ret =<< cgTypedE e
   (ReturnStmtVoid) -> line "ret void"
   (ExprStmt expr) -> cgTypedE expr >> return ()
-  CompoundStmt xs -> mapM_ cgStmt xs
-  (VarDecl name typ init x) -> maybeM cgTypedE init >>= \initVal -> do
-      case typ of
-        (TConst _) -> withLocal name (fromJust initVal) $ cgStmt x
-        _          ->
-          let value = mkValue AllocaPtr (TPtr typ) ("%"++encodeName name) in
-          withLocal name value $ do
-            value =% alloca typ
-            maybeM (\initVal -> store initVal value) initVal
-            cgStmt x
+  CompoundStmt vars xs -> withVars vars (mapM_ cgStmt xs)
+  (VarDecl _) -> error "Internal error: VarDecl in CodeGen!"
   (IfStmt cond t f) -> do
     c <- cgTypedE cond
     tblock <- freshLabel

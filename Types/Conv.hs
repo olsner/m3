@@ -1,11 +1,9 @@
-{-# LANGUAGE FlexibleInstances,FlexibleContexts,UndecidableInstances,ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleInstances,FlexibleContexts,UndecidableInstances,ScopedTypeVariables,PatternGuards #-}
 
 module Types.Conv (implicitConversions) where
 
 import Prelude hiding ((.),id)
 import Control.Category
-
-import Data.Monoid
 
 import qualified Data.Map as M
 --import Data.Map (Map)
@@ -17,16 +15,8 @@ import Debug.Trace hiding (traceShow)
 import CppToken
 import AST -- for Types
 
-class ShowType a where
-  showType :: a -> String
-instance ShowType TypedE where
-  showType _ = "TypedE"
-instance ShowType Type where
-  showType _ = "Type"
-instance (ShowType a, ShowType b) => ShowType (a -> b) where
-  showType f = let x = undefined :: a; y = f x :: b in showType x ++ " -> " ++ showType y
-instance (ShowType (a -> b)) => Show (a -> b) where
-  show f = "<fun>" -- '<' : showType f ++ ">"
+instance Show (a -> b) where
+  show _ = "<fun>"
 
 type Conv = TypedE -> TypedE
 -- Search: find paths from a to b, returning some kind of evidence of the path afterwards
@@ -95,6 +85,7 @@ ptrNotNull TBool from = TypedE TBool . EBinary (initialPos "<generated>",NotEqua
 ptrNotNull a b = error ("ptrNotNull: to "++show a++" from "++show b)
 
 arrToPtr to (TArray _ _) (TypedE _ (EDeref expr@(TypedE _ _))) = TypedE to (EArrToPtr expr)
+arrToPtr to from _ = error ("arrToPtr: to "++show to++" from "++show from)
 
 removeConst = Search $ \t -> case t of
   (TConst t') -> [(t',retype)]
@@ -138,11 +129,14 @@ addConst = Search $ \t -> case t of
   _ -> [(TConst t, retype), (t,retype)]
 
 implicitConversions :: Type -> Type -> Maybe Conv
-implicitConversions to from | to == from = Just id
-implicitConversions to from@TNullPtr = case to of
-  TPtr _ -> Just (cast to from)
-  TConst (TPtr _) -> Just (cast to from)
-implicitConversions to from = fmap (\f -> f to from) $ lookup to $ runSearch implicitConversionSearch from
+implicitConversions to from
+  | to == from = Just id
+  | TNullPtr <- from = case to of
+      TPtr _ -> Just (cast to from)
+      TConst (TPtr _) -> Just (cast to from)
+      _ -> error ("Null-pointer conversion to "++show to)
+  | otherwise = fmap (\f -> f to from) $ lookup to $ runSearch implicitConversionSearch from
+
 implicitConversionSearch :: ConvF
 implicitConversionSearch = 
   nothingOr removeConst <>

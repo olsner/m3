@@ -39,8 +39,8 @@ runSC args = runCounterT 0 . flip evalStateT (SCState 0 (S.fromList argNames) (M
 scError = error
 scWarn = traceIO
 
-traceFunM str m x = liftIO (putStrLn (str++": "++show x)) >> m x >>= \x -> liftIO (putStrLn (str++" DONE: "++show x)) >> return x
-traceM str m = liftIO (putStrLn str) >> m >>= \x -> liftIO (putStr (str++": done\n")) >> return x
+--traceFunM str m x = liftIO (putStrLn (str++": "++show x)) >> m x >>= \x -> liftIO (putStrLn (str++" DONE: "++show x)) >> return x
+--traceM str m = liftIO (putStrLn str) >> m >>= \x -> liftIO (putStr (str++": done\n")) >> return x
 traceIO str = liftIO (putStrLn str)
 
 inNewScope :: (MonadIO m, Typeable a, Data a) => SC m a -> SC m a

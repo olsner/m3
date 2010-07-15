@@ -33,6 +33,9 @@ type Locals = Map String Value
 type CGMT m = CounterT Int (StateT Locals (WriterT String m))
 type CGM a = forall m . (MonadIO m) => CGMT m a
 
+cgError :: String -> CGM a
+cgError = error
+
 fresh :: CGM String
 fresh = printf "%%t%d" <$> getAndInc
 
@@ -169,7 +172,7 @@ trunc value to = "trunc " ++ valueText value ++ " to " ++ encodeType to
 withVars :: MonadIO m => [(Type,Name,Maybe TypedE)] -> CGMT m a -> CGMT m a
 withVars vars m = foldr withVar m vars
 withVar :: MonadIO m => (Type,Name,Maybe TypedE) -> CGMT m a -> CGMT m a
-withVar (TConst typ,name,init) m =
+withVar (TConst _,name,init) m =
   cgTypedE (fromJust init) >>= \initVal -> withLocal name initVal m
 withVar (typ,name,init) m =
   maybeM cgTypedE init >>= \initVal -> do
@@ -292,6 +295,7 @@ arithBinop tok op pos typ = case typ of
     "sub" -> do
       incr <- withFresh TInt (=% "sub "++encodeType (valueType y)++" 0,"++valueTextNoType y)
       withFresh typ (=% getelementptr x [incr])
+    _ -> cgError ("Unimplemented operator on pointers: "++op)
   _ -> error (show pos++": "++show tok++" operator only supports ints, attempted on "++show typ)
   where
       f op x y = withFresh typ (=% unwords [op,valueText x,",",valueTextNoType y])
@@ -304,13 +308,15 @@ getBinopCode t = case t of
   Minus -> arithBinop t "sub"
   _ -> error ("getBinopCode: "++show t)
 
-cgAssignOp Assignment = \rv lv -> return rv
+cgAssignOp Assignment = \rv _lv -> return rv
 cgAssignOp PlusAssign = \rv lv -> withFresh (valueType lv) $ (=% "add "++valueText lv++","++valueTextNoType rv)
+cgAssignOp op = \_ _ -> cgError ("Unknown/unimplemented assignment-operator: "++show op)
 
 cgPostfixOp (_,Decrement) typ@(TPtr _) val = withFresh typ $ (=% getelementptr val [minusOne])
 cgPostfixOp (_,Increment) typ@(TPtr _) val = withFresh typ $ (=% getelementptr val [one])
 cgPostfixOp (_,Decrement) typ val = withFresh typ $ (=% "sub "++valueText val++", 1")
 cgPostfixOp (_,Increment) typ val = withFresh typ $ (=% "add "++valueText val++", 1")
+cgPostfixOp op _ _ = cgError ("Unknown/unimplemented postfix operator: "++show op)
 
 cgCast to@(TPtr _) (TPtr _) lv = do
   withFresh to (=% bitcast lv to)

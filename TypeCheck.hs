@@ -15,13 +15,12 @@ import qualified Data.Map as M
 import Debug.Trace
 
 import Text.Printf
-import Text.ParserCombinators.Parsec.Pos
 
 import AST
 import CppToken
 import Types.Conv
 
-import Counter -- Also implements Applicative for StateT o.o
+import Counter() -- Also implements Applicative for StateT o.o
 
 data VarType = Const | Global | NonConst deriving (Show)
 data Binding = Var VarType Type | Alias Name deriving (Show)
@@ -147,7 +146,7 @@ inScopeVars vars m = f [] vars
 
     tcVar (typ,name,init) = (,,) typ name <$> g typ init
     g typ@(TConst _) (Just init) = Just <$> tcExprAsType typ init
-    g typ@(TConst _) init = tcError "Constant variable without initializer"
+    g (TConst _) Nothing = tcError "Constant variable without initializer"
     g typ init = maybeM (tcExprAsType typ) init
 
 tcStmt :: MonadIO m => Type -> [FormalParam] -> Statement ExprF -> TC m (Statement TypedE)
@@ -263,3 +262,4 @@ binopTypeRule other = \_ -> tcError ("Unhandled binary operator: "++show other)
 
 tcUnary LogicalNot = tcExprAsType TBool
 tcUnary Minus = tcExpr -- TODO Check that it's something that we can do arithmetic on...
+tcUnary op = \_ -> tcError ("Unknown unary operator "++show op)

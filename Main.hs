@@ -1,5 +1,4 @@
 import Control.Applicative
-import Control.Arrow
 import Control.Monad.Reader
 import Control.Monad.State
 

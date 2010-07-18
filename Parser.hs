@@ -3,7 +3,6 @@
 module Parser
   (Parser,
   runParser,
-  onFail,
   commit,
   next,
   satisfy,
@@ -31,10 +30,6 @@ data Res s a = Success s a | Retry String | Error String
 
 type PTRes s t a = (Res s a, [t])
 newtype Parser s t a = P (s -> [t] -> PTRes s t a)
-
-infixr 9 .:
-{-# INLINE (.:) #-}
-(.:) = (.).(.)
 
 {-# INLINE onP #-}
 onP :: (PTRes s t a -> PTRes s t b) -> Parser s t a -> Parser s t b
@@ -64,18 +59,9 @@ instance Applicative (Parser s t) where
       continue (Error e, ts) = (Error e, ts)
       continue (Retry e, ts) = (Retry e, ts)
       continue (Success s f, ts) = case pa s ts of
-        (Success s' x, ts') -> (Success s' (f x), ts')
+        (Success s x, ts') -> (Success s (f x), ts')
         (Retry e, ts') -> (Retry e, ts')
         (Error e, ts') -> (Error e, ts')
-
-{-instance Monad (Parser t) where
-  return = pure
-  fail e = P $ \ts -> (Left e, ts)
-  {-# INLINE (>>=) #-}
-  (P p) >>= q = P $ \ts ->
-    case p ts of
-      (Right x, ts') -> unP (q x) ts'
-      (Left e, ts') -> (Left e, ts')-}
 
 instance Alternative (Parser s t) where
   empty = failParse "Alternative.empty"
@@ -88,7 +74,6 @@ commit (P p) = P $ \s ts -> case p s ts of
 
 failParse e = {-trace ("failParse: "++e) $-} P $ \s ts -> (Retry e, ts)
 
-onFail = (<|>)
 
 guardMsg b msg = unless b (failParse msg)
 

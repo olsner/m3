@@ -1,9 +1,11 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# OPTIONS_HADDOCK ignore-exports #-}
 
 module Parser
   (Parser,
   runParser,
   commit,
+  commitAp,
   next,
   satisfy,
   eof,
@@ -33,9 +35,14 @@ type PTRes s t a = (Res s a, [t])
 newtype Parser s t a = P (s -> [t] -> PTRes s t a)
 
 {-# INLINE onP #-}
+-- | Internal helper function: take a transformation on the internal result
+-- type and use it to transform a Parser type.
 onP :: (PTRes s t a -> PTRes s t b) -> Parser s t a -> Parser s t b
 onP f (P p) = P $ \s ts -> f (p s ts)
 
+-- | Run a parser. Takes a state and a list of tokens and returns the remaining
+-- tokens along with either an error message or a tuple of state and value
+-- result.
 runParser :: Parser s t a -> s -> [t] -> (Either String (s,a), [t])
 runParser (P p) s = first convert . p s
   where
@@ -69,21 +76,34 @@ instance Alternative (Parser s t) where
   {-# INLINE (<|>) #-}
   (P p) <|> (P q) = P $ \s ts -> case p s ts of (Retry _, _) -> q s ts; r -> r
 
+-- | Make parse failure in 'p' a fatal parser error rather than a backtracking
+-- error.
+commit :: Parser s t a -> Parser s t a
 commit (P p) = P $ \s ts -> case p s ts of
   (Retry e, ts) -> trace "Retry caught in commit" (Error ("commit: "++e), ts)
   other -> other
 
-failParse e = {-trace ("failParse: "++e) $-} P $ \s ts -> (Retry e, ts)
+-- | Slightly more intuitive interface for committing to parses - the first
+-- parameter is something that (if matching) commits the parse, and the second
+-- is something that must successfully parse if the first parser succeeds.
+commitAp :: Parser s t (a -> b) -> Parser s t a -> Parser s t b
+commitAp p q = p <*> commit q
 
-
+-- | Cause a parse failure with the given message.
+failParse e = {-trace ("failParse: "++e) $-} P $ \_ ts -> (Retry e, ts)
 
 {-# INLINE next #-}
+-- | Return and consume the next token. Fail the parse if at end of stream.
+next :: Parser s t t
 next = P f
   where
     -- guardM (gets (not . null)) "Ran out of input (EOF)" >> (gets head <* modify tail)
     f _ [] = (Retry "Ran out of input (EOF)", [])
     f s (t:ts) = (Success s t, ts)
 
+-- | Return the next token but do not consume it. Fail the parse if at end of
+-- stream.
+lookNext :: Parser s t t
 lookNext = P f
   where
     f _ [] = (Retry "Ran out of input (EOF)", [])
@@ -101,7 +121,7 @@ satisfyLookState msg p = P f
       | p s t = (Success s t, ts)
       | True  = (Retry ("Parser.satisfy: expected "++msg++", found "++show t), ts)
 {-# INLINE satisfyLook #-}
--- | Like satisfyLookState but the predice does not look at the state.
+-- | Like satisfyLookState but the predicate does not look at the state.
 satisfyLook :: Show t => String -> (t -> Bool) -> Parser s t t
 satisfyLook msg p = satisfyLookState msg (const p)
 {-# INLINE satisfy #-}
@@ -109,34 +129,58 @@ satisfyLook msg p = satisfyLookState msg (const p)
 satisfy :: Show t => String -> (t -> Bool) -> Parser s t t
 satisfy msg p = satisfyLook msg p <* next
 
+-- | Match only if at end of stream.
+eof :: Parser s t ()
 eof = P $ \s ts -> (if null ts then Success s () else Retry "Expected end-of-file", ts)
 
+-- | Combine a head-parser and a tail-parser into a list parser. Equivalent to
+-- @liftM2 (:)@.
+list :: Parser s t a -> Parser s t [a] -> Parser s t [a]
 list p ps = (:) <$> p <*> ps
 
+-- | Match zero or more 'p' followed by one 'z', returning the result of 'p'.
+manyFinally :: Parser s t a -> Parser s t b -> Parser s t [a]
 manyFinally p z = many p <* z
+-- | Match one or more of 'p'.
+many1 :: Parser s t a -> Parser s t [a]
 many1 p = list p (many p)
 
+-- | Match exactly 'n' occurences of 'p'.
+exactly :: Int -> Parser s t a -> Parser s t [a]
 exactly 0 _ = pure []
 exactly n p = list p (exactly (n - 1) p)
 
+-- | Match one or more 'p' separated by 's'es.
 sepBy1 p s = list p (many (s *> p))
+-- | Match zero or more 'p' separated by 's'es.
 sepBy p s = sepBy1 p s <|> pure []
 
+-- | Match a list of tokens exactly using '(==)'.
+match :: Eq t => Show t => [t] -> Parser s t [t]
 match (x:xs) = list (satisfy (show x) (== x)) (match xs)
-match [] = return []
+match [] = pure []
 
 {-# INLINE choice #-}
+-- | Match the first in a list of parsers that matches.
 choice :: [Parser s t a] -> Parser s t a
 choice = foldr (<|>) (failParse "choice ran out of alternatives")
 
-
 -- State management interface
+
+-- | Run a parser with a local state, restoring the previous state before
+-- continuing.
+localState :: (s -> s) -- ^ A function to apply to the state to create the new local state
+           -> Parser s t a -- ^ The parser to run in the local state
+           -> Parser s t a
 localState fun (P p) = P $ \s ts -> case p (fun s) ts of
   (Success _ x, ts) -> (Success s x, ts)
   res -> res
 
+-- | Return the current state.
+getState :: Parser s t s
 getState = P $ \s ts -> (Success s s, ts)
 -- | Replace the state entirely. Note: when backtracking past this call, the
 -- state will be discarded and parsing will continue with the previous state.
+putState :: s -> Parser s t s
 putState s = P $ \_ ts -> (Success s s, ts)
 

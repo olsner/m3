@@ -26,7 +26,7 @@ p <**?> maybefp = p <**> (fromMaybe id <$> optional maybefp)
 
 pExpressionList = listOf pAssignmentExpression
 
-pExpression :: Parser Token ExprF
+pExpression :: Parser s Token ExprF
 pExpression = pAssignmentExpression <**?> (token Comma *> (flip eSeq <$> pExpression))
 
 -- pExpression without (top-level) assignmnt or sequence expressions
@@ -65,7 +65,7 @@ pAdditiveExpression = pMultiplicativeExpression <**?> choice suffices
 
 pMultiplicativeExpression = pCastExpression
 pCastExpression = pUnaryExpression
-pUnaryExpression :: Parser Token ExprF
+pUnaryExpression :: Parser s Token ExprF
 pUnaryExpression = choice
   [error "prefix increment, unimpl" <$ token Increment *> pCastExpression
   ,error "prefix decrement, unimpl" <$ token Decrement *> pCastExpression
@@ -74,7 +74,7 @@ pUnaryExpression = choice
   ] -- should probably include sizeof, the internal support for it is likely to be required anyway
   <|> failParse "pUnaryExpression"
 
-pPostfixExpression :: Parser Token ExprF
+pPostfixExpression :: Parser s Token ExprF
 pPostfixExpression = pPrimaryExpression <**?> choice
   [(InF .) <$> (EPostfix <$> postfixOperator)
   ,(InF .) <$> flip EFunCall <$> inParens pExpressionList
@@ -99,6 +99,6 @@ pAssignmentOperator = choice . map token $
   ,PlusAssign
   ] -- TODO Also handle operator-assignments, once lexer and token definitions have it.
 
-pUnaryOperator :: Parser Token (ExprF -> ExprF)
+pUnaryOperator :: Parser s Token (ExprF -> ExprF)
 pUnaryOperator = eUnary <$> (choice (map token unaryOperators) <|> failParse "Expected unary operator")
 

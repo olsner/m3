@@ -17,10 +17,10 @@ import Grammar.Utils
 pUnit = Unit <$> many pImport <*> (pModule <|> head <$> pFunction) <* eof
 
 pModule = keyword "module" *> (Decl <$> pName) <* token Semicolon <*> (ModuleDef . concat <$> commit (many pTopLevelDecl))
-pTopLevelDecl :: Parser Token [Decl ExprF]
+pTopLevelDecl :: Parser s Token [Decl ExprF]
 pTopLevelDecl = pExternalFunction <|> pFunction <|> (pVarDecl (\typ name e -> Decl name (VarDef typ e)))
 
-pImport :: Parser Token Name
+pImport :: Parser s Token Name
 pImport = keyword "import" *> pName <* token Semicolon
 
 pFunction = (\ret nm params code -> [Decl nm (FunctionDef ret params code)]) <$>
@@ -52,7 +52,7 @@ pStatement = choice
   ,keyword "while" *> commit (WhileStmt <$> inParens pExpression <*> pStatement)
   ] <|> failParse "Out of luck in pStatement"
 
-pVarDecl :: (Type -> Name -> Maybe ExprF -> a) -> Parser Token [a]
+pVarDecl :: (Type -> Name -> Maybe ExprF -> a) -> Parser s Token [a]
 pVarDecl f = mkVarDecl f <$> pType <*> sepBy1 ((,) <$> pName <*> optional pVarInitializer) (token Comma) <* token Semicolon
 mkVarDecl :: Show e => (Type -> Name -> Maybe e -> a) -> Type -> [(Name,Maybe e)] -> [a]
 mkVarDecl varDecl typ vars = map (uncurry (varDecl typ)) vars

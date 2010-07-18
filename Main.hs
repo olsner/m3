@@ -28,8 +28,8 @@ parse path = do
       putStrLn "Error in lexical analysis:" >> print err
       exitFailure
     Right tokens ->
-      case runParser pUnit tokens of
-        (Right res, []) -> return res
+      case runParser pUnit () tokens of
+        (Right (_,res), []) -> return res
         (res, rest) -> do
           putStrLn "*** Parse left residue (only 10 tokens shown):"
           mapM_ print (take 10 rest)
@@ -76,9 +76,9 @@ processImport name = ifNotLoaded name $ do
 
 parseName name = case lexCpp "cmd-line" name of
   Left err -> putStrLn "Error: Can't parse name:" >> print err >> exitFailure
-  Right tokens -> case fst (runParser pName tokens) of
+  Right tokens -> case fst (runParser pName () tokens) of
     Left err -> putStrLn "Error: Can't parse name:" >> print err >> exitFailure
-    Right name -> return name
+    Right (_,name) -> return name
  
 
 main = mapM_ (doMain <=< parseName) =<< getArgs

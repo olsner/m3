@@ -27,42 +27,44 @@ import Control.Monad (unless)
 
 import Debug.Trace
 
-data Res a = Success a | Retry String | Error String
+data Res s a = Success s a | Retry String | Error String
 
-newtype Parser t a = P { unP :: [t] -> (Res a, [t]) }
+type PTRes s t a = (Res s a, [t])
+newtype Parser s t a = P (s -> [t] -> PTRes s t a)
 
 infixr 9 .:
 {-# INLINE (.:) #-}
 (.:) = (.).(.)
 
 {-# INLINE onP #-}
-onP f = P . f .: unP
+onP :: (PTRes s t a -> PTRes s t b) -> Parser s t a -> Parser s t b
+onP f (P p) = P $ \s ts -> f (p s ts)
 
-runParser :: Parser t a -> [t] -> (Either String a, [t])
-runParser (P p) = first convert . p
+runParser :: Parser s t a -> s -> [t] -> (Either String (s,a), [t])
+runParser (P p) s = first convert . p s
   where
-    convert (Success x) = Right x
+    convert (Success s x) = Right (s,x)
     convert (Retry e) = Left e
     convert (Error e) = Left e
 
-instance Functor Res where
-  fmap f (Success x) = Success (f x)
+instance Functor (Res s) where
+  fmap f (Success s x) = Success s (f x)
   fmap _ (Retry e) = (Retry e)
   fmap _ (Error e) = (Error e)
 
-instance Functor (Parser t) where
+instance Functor (Parser s t) where
   {-# INLINE fmap #-}
   fmap f p = first (fmap f) `onP` p
 
-instance Applicative (Parser t) where
+instance Applicative (Parser s t) where
   {-# INLINE pure #-}
-  pure x = P $ \ts -> (Success x, ts)
+  pure x = P $ \s ts -> (Success s x, ts)
   pf <*> (P pa) = continue `onP` pf
     where
       continue (Error e, ts) = (Error e, ts)
       continue (Retry e, ts) = (Retry e, ts)
-      continue (Success f, ts) = case pa ts of
-        (Success x, ts') -> (Success (f x), ts')
+      continue (Success s f, ts) = case pa s ts of
+        (Success s' x, ts') -> (Success s' (f x), ts')
         (Retry e, ts') -> (Retry e, ts')
         (Error e, ts') -> (Error e, ts')
 
@@ -75,16 +77,16 @@ instance Applicative (Parser t) where
       (Right x, ts') -> unP (q x) ts'
       (Left e, ts') -> (Left e, ts')-}
 
-instance Alternative (Parser t) where
+instance Alternative (Parser s t) where
   empty = failParse "Alternative.empty"
   {-# INLINE (<|>) #-}
-  (P p) <|> (P q) = P $ \ts -> case p ts of (Retry _, _) -> q ts; r -> r
+  (P p) <|> (P q) = P $ \s ts -> case p s ts of (Retry _, _) -> q s ts; r -> r
 
-commit (P p) = P $ \ts -> case p ts of
+commit (P p) = P $ \s ts -> case p s ts of
   (Retry e, ts) -> trace "Retry caught in commit" (Error ("commit: "++e), ts)
   other -> other
 
-failParse e = {-trace ("failParse: "++e) $-} P $ \ts -> (Retry e, ts)
+failParse e = {-trace ("failParse: "++e) $-} P $ \s ts -> (Retry e, ts)
 
 onFail = (<|>)
 
@@ -94,24 +96,24 @@ guardMsg b msg = unless b (failParse msg)
 next = P f
   where
     -- guardM (gets (not . null)) "Ran out of input (EOF)" >> (gets head <* modify tail)
-    f [] = (Retry "Ran out of input (EOF)", [])
-    f (t:ts) = (Success t, ts)
+    f _ [] = (Retry "Ran out of input (EOF)", [])
+    f s (t:ts) = (Success s t, ts)
 
 lookNext = P f
   where
-    f [] = (Retry "Ran out of input (EOF)", [])
-    f ts@(t:_) = (Success t, ts)
+    f _ [] = (Retry "Ran out of input (EOF)", [])
+    f s ts@(t:_) = (Success s t, ts)
 
 {-# INLINE satisfy #-}
 satisfyLook msg p = P f
   where
-    f [] = (Retry ("Parser.satisfy: expected "++msg++" instead of EOF"), [])
-    f ts@(t:_)
-      | p t  = (Success t, ts)
+    f _ [] = (Retry ("Parser.satisfy: expected "++msg++" instead of EOF"), [])
+    f s ts@(t:_)
+      | p t  = (Success s t, ts)
       | True = (Retry ("Parser.satisfy: expected "++msg++", found "++show t), ts)
 satisfy msg p = satisfyLook msg p <* next
 
-eof = P $ \ts -> (if null ts then Success () else Retry "Expected end-of-file", ts)
+eof = P $ \s ts -> (if null ts then Success s () else Retry "Expected end-of-file", ts)
 
 list p ps = (:) <$> p <*> ps
 
@@ -128,5 +130,5 @@ match (x:xs) = list (satisfy (show x) (== x)) (match xs)
 match [] = return []
 
 {-# INLINE choice #-}
-choice :: [Parser t a] -> Parser t a
+choice :: [Parser s t a] -> Parser s t a
 choice = foldr (<|>) (failParse "choice ran out of alternatives")

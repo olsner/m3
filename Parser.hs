@@ -14,15 +14,16 @@ module Parser
   sepBy1,
   match,
   choice,
-  guardMsg,
   satisfyLook,
   lookNext,
-  failParse)
+  failParse,
+  localState,
+  getState,
+  putState)
   where
 
 import Control.Applicative
 import Control.Arrow (first)
-import Control.Monad (unless)
 
 import Debug.Trace
 
@@ -75,7 +76,6 @@ commit (P p) = P $ \s ts -> case p s ts of
 failParse e = {-trace ("failParse: "++e) $-} P $ \s ts -> (Retry e, ts)
 
 
-guardMsg b msg = unless b (failParse msg)
 
 {-# INLINE next #-}
 next = P f
@@ -89,13 +89,24 @@ lookNext = P f
     f _ [] = (Retry "Ran out of input (EOF)", [])
     f s ts@(t:_) = (Success s t, ts)
 
-{-# INLINE satisfy #-}
-satisfyLook msg p = P f
+{-# INLINE satisfyLookState #-}
+-- | Check the next token and current state against a predicate, return the
+-- token if the predicate returns True, fail the parse otherwise. Also fails if
+-- end of stream is reached and does *not* consume the token.
+satisfyLookState :: Show t => String -> (s -> t -> Bool) -> Parser s t t
+satisfyLookState msg p = P f
   where
     f _ [] = (Retry ("Parser.satisfy: expected "++msg++" instead of EOF"), [])
     f s ts@(t:_)
-      | p t  = (Success s t, ts)
-      | True = (Retry ("Parser.satisfy: expected "++msg++", found "++show t), ts)
+      | p s t = (Success s t, ts)
+      | True  = (Retry ("Parser.satisfy: expected "++msg++", found "++show t), ts)
+{-# INLINE satisfyLook #-}
+-- | Like satisfyLookState but the predice does not look at the state.
+satisfyLook :: Show t => String -> (t -> Bool) -> Parser s t t
+satisfyLook msg p = satisfyLookState msg (const p)
+{-# INLINE satisfy #-}
+-- | Like satisfyLook but also consumes the token.
+satisfy :: Show t => String -> (t -> Bool) -> Parser s t t
 satisfy msg p = satisfyLook msg p <* next
 
 eof = P $ \s ts -> (if null ts then Success s () else Retry "Expected end-of-file", ts)
@@ -117,3 +128,15 @@ match [] = return []
 {-# INLINE choice #-}
 choice :: [Parser s t a] -> Parser s t a
 choice = foldr (<|>) (failParse "choice ran out of alternatives")
+
+
+-- State management interface
+localState fun (P p) = P $ \s ts -> case p (fun s) ts of
+  (Success _ x, ts) -> (Success s x, ts)
+  res -> res
+
+getState = P $ \s ts -> (Success s s, ts)
+-- | Replace the state entirely. Note: when backtracking past this call, the
+-- state will be discarded and parsing will continue with the previous state.
+putState s = P $ \_ ts -> (Success s s, ts)
+

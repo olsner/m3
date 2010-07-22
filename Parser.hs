@@ -1,5 +1,4 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
-{-# OPTIONS_HADDOCK ignore-exports #-}
 
 module Parser
   (Parser,
@@ -32,7 +31,10 @@ import Debug.Trace
 data Res s a = Success s a | Retry String | Error String
 
 type PTRes s t a = (Res s a, [t])
-newtype Parser s t a = P (s -> [t] -> PTRes s t a)
+
+-- | The main parser type.
+newtype Parser s t a
+  = P (s -> [t] -> PTRes s t a)
 
 {-# INLINE onP #-}
 -- | Internal helper function: take a transformation on the internal result
@@ -90,6 +92,7 @@ commitAp :: Parser s t (a -> b) -> Parser s t a -> Parser s t b
 commitAp p q = p <*> commit q
 
 -- | Cause a parse failure with the given message.
+failParse :: String -> Parser s t a
 failParse e = {-trace ("failParse: "++e) $-} P $ \_ ts -> (Retry e, ts)
 
 {-# INLINE next #-}
@@ -150,9 +153,11 @@ exactly :: Int -> Parser s t a -> Parser s t [a]
 exactly 0 _ = pure []
 exactly n p = list p (exactly (n - 1) p)
 
--- | Match one or more 'p' separated by 's'es.
+-- | Match one or more items separated by a separator.
+sepBy1 :: Parser s t a -> Parser s t b -> Parser s t [a]
 sepBy1 p s = list p (many (s *> p))
--- | Match zero or more 'p' separated by 's'es.
+-- | Match zero or more items separate by a separator.
+sepBy :: Parser s t a -> Parser s t b -> Parser s t [a]
 sepBy p s = sepBy1 p s <|> pure []
 
 -- | Match a list of tokens exactly using '(==)'.

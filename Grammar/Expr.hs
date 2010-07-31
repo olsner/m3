@@ -8,8 +8,8 @@ import Data.Maybe
 
 import AST
 import CppToken
-import Parser
 
+import Grammar.Parser
 import Grammar.Types
 import Grammar.Utils
 

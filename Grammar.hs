@@ -1,6 +1,6 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 
-module Grammar (pUnit, pName) where
+module Grammar (pUnit, pName, runParser {- from Parser -}) where
 
 import Control.Applicative
 
@@ -8,9 +8,9 @@ import Data.Maybe
 
 import AST
 import CppToken
-import Parser
 
 import Grammar.Expr
+import Grammar.Parser
 import Grammar.Types
 import Grammar.Utils
 

@@ -5,8 +5,8 @@ module Grammar.Types (pType) where
 import Control.Applicative
 
 import AST
-import Parser
 
+import Grammar.Parser
 import Grammar.Utils
 
 pType = pLeftType <**> pArraySuffix

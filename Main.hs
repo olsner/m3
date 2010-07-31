@@ -14,11 +14,10 @@ import Text.Printf
 
 import AST
 import CppLexer (lexCpp)
-import Parser
 import CodeGen
 import TypeCheck (typecheck)
 import ScopeCheck (scopecheck)
-import Grammar (pUnit, pName)
+import Grammar (pUnit, pName, runParser)
 
 parse path = do
   input <- readFile path

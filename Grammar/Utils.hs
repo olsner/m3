@@ -9,7 +9,7 @@ import Data.Maybe
 
 import AST
 import CppToken
-import Parser
+import Grammar.Parser
 
 infixl 3 $>
 ($>) = flip (<$)

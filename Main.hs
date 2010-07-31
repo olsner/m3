@@ -28,8 +28,8 @@ parse path = do
       exitFailure
     Right tokens ->
       case runParser pUnit () tokens of
-        (Right (_,res), []) -> return res
-        (res, rest) -> do
+        (Right (res,_),_) -> return res
+        (res,rest) -> do
           putStrLn "*** Parse left residue (only 10 tokens shown):"
           mapM_ print (take 10 rest)
           --putStrLn "*** Full token stream:"
@@ -77,7 +77,7 @@ parseName name = case lexCpp "cmd-line" name of
   Left err -> putStrLn "Error: Can't parse name:" >> print err >> exitFailure
   Right tokens -> case fst (runParser pName () tokens) of
     Left err -> putStrLn "Error: Can't parse name:" >> print err >> exitFailure
-    Right (_,name) -> return name
+    Right (name,_) -> return name
  
 
 main = mapM_ (doMain <=< parseName) =<< getArgs

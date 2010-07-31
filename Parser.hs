@@ -30,11 +30,12 @@ import Debug.Trace
 
 data Res s a = Success s a | Retry String | Error String
 
+-- | Convenience alias for the internal result type.
 type PTRes s t a = (Res s a, [t])
 
--- | The main parser type.
-newtype Parser s t a
-  = P (s -> [t] -> PTRes s t a)
+-- | The main parser type. This takes three arguments: the state, the token
+-- type and the result type.
+newtype Parser s t a = P (s -> [t] -> PTRes s t a)
 
 {-# INLINE onP #-}
 -- | Internal helper function: take a transformation on the internal result
@@ -45,10 +46,10 @@ onP f (P p) = P $ \s ts -> f (p s ts)
 -- | Run a parser. Takes a state and a list of tokens and returns the remaining
 -- tokens along with either an error message or a tuple of state and value
 -- result.
-runParser :: Parser s t a -> s -> [t] -> (Either String (s,a), [t])
+runParser :: Parser s t a -> s -> [t] -> (Either String (a,s), [t])
 runParser (P p) s = first convert . p s
   where
-    convert (Success s x) = Right (s,x)
+    convert (Success s x) = Right (x,s)
     convert (Retry e) = Left e
     convert (Error e) = Left e
 

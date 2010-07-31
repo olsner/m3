@@ -89,11 +89,11 @@ data Expr e =
   | EPostfix Token e
   | EConditional e e e -- ^ ?: expressions: condition, true-value, false-value
   | EAssignment Token e e -- FIXME EBinary with assignment operator...
-  | EDeref e -- ^ Doubles as lvalue-to-rvalue conversion, inserted by type checking. All variables are pointers, surprisingly
-  | EArrayIndex e {- ^ index -} e {- ^ array -}
+  | EDeref e -- ^ Dereferencing of a pointer. Doubles as lvalue-to-rvalue conversion, inserted by type checking. All variables are pointers, surprisingly.
+  | EArrayIndex e e -- ^ An array indexing expression. The first argument is the index, the second is the array/pointer. EArrayIndex a b == b[a]
   | EArrToPtr e
-  | ESeq e e
-  | ECast Type e
+  | ESeq e e -- ^ Sequencing expression, ESeq a b = (a,b)
+  | ECast Type e -- ^ Cast of an expression to a given type. ECast typ e == cast<[typ]>(e)
   -- 
   | EVarRef Name
   -- Literals

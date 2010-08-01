@@ -74,7 +74,7 @@ processImport name = ifNotLoaded name $ do
     Nothing -> error ("Error: Can't locate module "++show name)
 
 parseName name = case lexCpp "cmd-line" name of
-  Left err -> putStrLn "Error: Can't parse name:" >> print err >> exitFailure
+  Left err -> putStrLn "Error: Can't lex name:" >> print err >> exitFailure
   Right tokens -> case fst (runParser pName () tokens) of
     Left err -> putStrLn "Error: Can't parse name:" >> print err >> exitFailure
     Right (name,_) -> return name

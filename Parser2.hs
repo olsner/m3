@@ -27,7 +27,7 @@ import Control.Applicative
 --import Control.Applicative.Backtrack hiding (commit)
 --import qualified Control.Applicative.Backtrack as Backtrack
 import Control.Applicative.Error
-import Control.Applicative.Stream hiding (lookNext,next,eof)
+import Control.Applicative.Stream (StreamF,evalStreamF)
 import qualified Control.Applicative.Stream as Stream
 import Control.Applicative.State
 import Control.Applicative.Trans
@@ -45,6 +45,7 @@ import Debug.Trace
 -- * stream-eater (basically the [t] -> (a, [t]) part, with a = normal-error-containing-backtracking-error-or-result)
 -- * state
 
+{-
 instance Applicative Identity where
   pure = Identity
   (<*>) = ap
@@ -70,7 +71,6 @@ data Res s a = Success s a | Retry String | Error String
 -- | Convenience alias for the internal result type.
 type PTRes s t a = (Res s a, [t])
 
-{-
 -- | The main parser type. This takes three arguments: the state, the token
 -- type and the result type.
 -- The
@@ -140,17 +140,11 @@ failParse e = P (emptyError e)
 -- | Return and consume the next token. Fail the parse if at end of stream.
 next :: Parser s t t
 next = liftStream (Stream.next)
-  where
-    f _ [] = (Retry "Ran out of input (EOF)", [])
-    f s (t:ts) = (Success s t, ts)
 
 -- | Return the next token but do not consume it. Fail the parse if at end of
 -- stream.
 lookNext :: Parser s t t
-lookNext = liftStream (Stream.lookNext)
-  where
-    f _ [] = (Retry "Ran out of input (EOF)", [])
-    f s ts@(t:_) = (Success s t, ts)
+lookNext = liftStream (Stream.look)
 
 {-# INLINE satisfyLookState #-}
 -- | Check the next token and current state against a predicate, return the

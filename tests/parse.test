@@ -1,0 +1,5 @@
+./test_main.sh
+<<<
+return 0}
+return 2;
+>>>= 1

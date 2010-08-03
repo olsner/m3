@@ -78,7 +78,7 @@ printLLVM name = do
       writeStrings stringMap
       mapM_ (cgUnit . fromJust . flip M.lookup units) (importedUnits units name)
       cgMain name
-  liftIO (writeFile (encodeName name ++ ".ll") output)
+  liftIO (writeFile ("out/"++encodeName name ++ ".ll") output)
 
 cgMain mainModule = tell $
     "define external i32 @main(i32, i8**) {\n"++

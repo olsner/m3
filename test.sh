@@ -16,6 +16,6 @@ mod="$1"
 shift
 
 run "compiling ${mod}" dist/build/m3/m3 ${mod}
-file=${mod/::/__}
+file=out/${mod/::/__}
 run "LLVM-assembling ${file}" llvm-as ${file}.ll
 exec lli ${file}.bc "$@"

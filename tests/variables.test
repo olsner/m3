@@ -40,4 +40,6 @@ return a;
 int a;
 int a;
 return 0;
+>>>2
+m3: Redeclaration at same depth.
 >>>= 1

@@ -1,17 +1,21 @@
 #!/bin/bash
 
-fail() {
-    echo Failed "$@".
-    exit 1
+run() {
+    msg=$1
+    shift
+    if ! "$@" >/dev/null 2>&1; then
+        "$@"
+        res=$?
+        echo Failed "$msg"
+        exit $res
+    fi
+    return 0
 }
 
 mod="$1"
 shift
 
-dist/build/m3/m3 ${mod} >/dev/null 2>&1 || (
-	dist/build/m3/m3 ${mod}
-	fail Compiling ${mod}
-)
+run "compiling ${mod}" dist/build/m3/m3 ${mod}
 file=${mod/::/__}
-llvm-as ${file}.ll || fail LLVM-assembling ${file}
+run "LLVM-assembling ${file}" llvm-as ${file}.ll
 exec lli ${file}.bc "$@"

@@ -6,7 +6,7 @@ import Control.Applicative.Trans
 
 import Control.Arrow (first)
 import Control.Monad (ap)
-import Control.Monad.State
+import Control.Monad.State hiding (withState)
 
 instance Monad m => Applicative (StateT s m) where
   pure = return

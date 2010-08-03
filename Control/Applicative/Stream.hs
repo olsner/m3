@@ -12,12 +12,12 @@ newtype StreamF t f a = StreamF { unStreamF :: StateT [t] f a } deriving (Functo
 runStreamF f ts = runStateT (unStreamF f) ts
 evalStreamF f ts = evalStateT (unStreamF f) ts
 
-next :: Monad f => AlternativeError f => StreamF t f t
-next = StreamF (get >>= \s -> case s of [] -> emptyError "Stream.next: EOF"; (x:xs) -> put xs >> pure x)
-look :: Monad f => AlternativeError f => StreamF t f t
-look = StreamF (get >>= \s -> case s of [] -> emptyError "Stream.lookNext: EOF"; (x:_) -> pure x)
-eof :: Monad f => AlternativeError f => StreamF t f ()
-eof = StreamF (get >>= \s -> case s of [] -> pure (); _ -> emptyError "Stream.eof: not EOF")
+next :: Monad f => StreamF t f (Maybe t)
+next = StreamF (get >>= \s -> case s of [] -> pure Nothing; (x:xs) -> put xs >> pure (Just x))
+look :: Monad f => StreamF t f (Maybe t)
+look = StreamF (get >>= \s -> case s of [] -> pure Nothing; (x:_) -> pure (Just x))
+eof :: Monad f => StreamF t f Bool
+eof = StreamF (get >>= \s -> case s of [] -> pure True; _ -> pure False)
 
 instance ApplicativeTrans (StreamF t) where
   liftAp = StreamF . liftAp

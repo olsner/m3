@@ -14,14 +14,14 @@ module Parser.Internal
   where
 
 import Control.Applicative
-import Control.Arrow (first)
+import Control.Arrow (first,second)
 
 import Debug.Trace
 
-data Res s a = Success s a | Retry String | Error String
+data Res a = Success a | Retry String | Error String
 
 -- | Convenience alias for the internal result type.
-type PTRes s t a = (Res s a, [t])
+type PTRes s t a = (Res (a,s), [t])
 
 -- | The main parser type. This takes three arguments: the state, the token
 -- type and the result type.
@@ -39,30 +39,34 @@ onP f (P p) = P $ \s ts -> f (p s ts)
 runParser :: Parser s t a -> s -> [t] -> (Either String (a,s), [t])
 runParser (P p) s = first convert . p s
   where
-    convert (Success s x) = Right (x,s)
+    convert (Success x) = Right x
     convert (Retry e) = Left e
     convert (Error e) = Left e
 
-instance Functor (Res s) where
-  fmap f (Success s x) = Success s (f x)
-  fmap _ (Retry e) = (Retry e)
-  fmap _ (Error e) = (Error e)
+instance Functor Res where
+  fmap f (Success x) = Success (f x)
+  fmap _ (Retry e) = Retry e
+  fmap _ (Error e) = Error e
+instance Applicative Res where
+  pure = Success
+  Success f <*> Success x = Success (f x)
+  Success _ <*> Retry msg = Retry msg
+  Success _ <*> Error msg = Error msg
+  Retry msg <*> _ = Retry msg
+  Error msg <*> _ = Error msg
 
 instance Functor (Parser s t) where
   {-# INLINE fmap #-}
-  fmap f p = first (fmap f) `onP` p
+  fmap f p = first (fmap (first f)) `onP` p
 
 instance Applicative (Parser s t) where
   {-# INLINE pure #-}
-  pure x = P $ \s ts -> (Success s x, ts)
+  pure x = P $ \s ts -> (Success (x,s), ts)
   pf <*> (P pa) = continue `onP` pf
     where
       continue (Error e, ts) = (Error e, ts)
       continue (Retry e, ts) = (Retry e, ts)
-      continue (Success s f, ts) = case pa s ts of
-        (Success s x, ts') -> (Success s (f x), ts')
-        (Retry e, ts') -> (Retry e, ts')
-        (Error e, ts') -> (Error e, ts')
+      continue (Success (f,s), ts) = first (fmap (first f)) $ pa s ts 
 
 instance Alternative (Parser s t) where
   empty = failParse "Alternative.empty"
@@ -87,7 +91,7 @@ next = P f
   where
     -- guardM (gets (not . null)) "Ran out of input (EOF)" >> (gets head <* modify tail)
     f _ [] = (Retry "Ran out of input (EOF)", [])
-    f s (t:ts) = (Success s t, ts)
+    f s (t:ts) = (Success (t,s), ts)
 
 -- | Return the next token but do not consume it. Fail the parse if at end of
 -- stream.
@@ -95,11 +99,11 @@ lookNext :: Parser s t t
 lookNext = P f
   where
     f _ [] = (Retry "Ran out of input (EOF)", [])
-    f s ts@(t:_) = (Success s t, ts)
+    f s ts@(t:_) = (Success (t,s), ts)
 
 -- | Match only if at end of stream.
 eof :: Parser s t ()
-eof = P $ \s ts -> (if null ts then Success s () else Retry "Expected end-of-file", ts)
+eof = P $ \s ts -> (if null ts then Success ((),s) else Retry "Expected end-of-file", ts)
 
 {-# INLINE satisfyLookState #-}
 -- | Check the next token and current state against a predicate, return the
@@ -110,7 +114,7 @@ satisfyLookState msg p = P f
   where
     f _ [] = (Retry ("Parser.satisfy: expected "++msg++" instead of EOF"), [])
     f s ts@(t:_)
-      | p s t = (Success s t, ts)
+      | p s t = (Success (t,s), ts)
       | True  = (Retry ("Parser.satisfy: expected "++msg++", found "++show t), ts)
 
 {-
@@ -125,11 +129,11 @@ satisfyLookState msg p = withState (f p msg) <*> lookNext
 
 -- | Return the current state.
 getState :: Parser s t s
-getState = P $ \s ts -> (Success s s, ts)
+getState = P $ \s ts -> (Success (s,s), ts)
 -- | Replace the state entirely. Note: when backtracking past this call, the
 -- state will be discarded and parsing will continue with the previous state.
 putState :: s -> Parser s t s
-putState s = P $ \_ ts -> (Success s s, ts)
+putState s = P $ \_ ts -> (Success (s,s), ts)
 
 -- withState pure == getState
 withState :: (s -> Parser s t a) -> Parser s t a

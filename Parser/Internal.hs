@@ -4,7 +4,7 @@ module Parser.Internal
   commit,
   failParse,
   next,
-  lookNext,
+  look,
   eof,
   getState,
   putState,
@@ -95,8 +95,8 @@ next = P f
 
 -- | Return the next token but do not consume it. Fail the parse if at end of
 -- stream.
-lookNext :: Parser s t t
-lookNext = P f
+look :: Parser s t t
+look = P f
   where
     f _ [] = (Retry "Ran out of input (EOF)", [])
     f s ts@(t:_) = (Success (t,s), ts)

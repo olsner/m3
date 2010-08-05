@@ -35,6 +35,13 @@ import Parser.Internal
 commitAp :: Parser s t (a -> b) -> Parser s t a -> Parser s t b
 commitAp p q = p <*> commit q
 
+{-# INLINE satisfyLookState #-}
+-- | Check the next token and current state against a predicate, return the
+-- token if the predicate returns True, fail the parse otherwise. Also fails if
+-- end of stream is reached and does *not* consume the token.
+satisfyLookState :: Show t => String -> (s -> t -> Parser s t a) -> Parser s t a
+satisfyLookState msg p = (look <|> failParse ("Parser.satisfyLookState: expected "++msg++" instead of EOF")) >>= \t -> getState >>= \s -> (p s t <|> failParse ("Parser.satisfyLookState: expected "++msg++" but found "++show t))
+
 {-# INLINE satisfyLook #-}
 -- | Like satisfyLookState but the predicate does not look at the state.
 satisfyLook :: Show t => String -> (t -> Bool) -> Parser s t t

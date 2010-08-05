@@ -1,5 +1,5 @@
 module Parser.Internal
-  (Parser,
+  (Parser(),
   runParser,
   commit,
   failParse,
@@ -10,7 +10,6 @@ module Parser.Internal
   putState,
   withState,
   modifyState,
-  satisfyLookState
   )
   where
 
@@ -112,10 +111,6 @@ look = P f
 -- | Match only if at end of stream.
 eof :: Parser s t ()
 eof = P $ \s ts -> (if null ts then Success ((),s) else Retry "Expected end-of-file", ts)
-
-{-# INLINE satisfyLookState #-}
-satisfyLookState :: Show t => String -> (s -> t -> Parser s t a) -> Parser s t a
-satisfyLookState msg p = (look <|> failParse ("Parser.satisfyLookState: expected "++msg++" instead of EOF")) >>= \t -> getState >>= \s -> (p s t <|> failParse ("Parser.satisfyLookState: expected "++msg++" but found "++show t))
 
 -- | Return the current state.
 getState :: Parser s t s

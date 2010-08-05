@@ -3,11 +3,11 @@
 module Parser
   (Parser,
   runParser,
-  commit,
-  commitAp,
   next,
   look,
   satisfy,
+  satisfyLook,
+  satisfyLookState,
   eof,
   manyFinally,
   many1,
@@ -16,11 +16,14 @@ module Parser
   sepBy1,
   match,
   choice,
-  satisfyLook,
+  commit,
+  commitAp,
   failParse,
   localState,
   getState,
-  putState)
+  putState,
+  withState,
+  modifyState)
   where
 
 import Control.Applicative

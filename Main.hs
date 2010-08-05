@@ -17,7 +17,7 @@ import CppLexer (lexCpp)
 import CodeGen
 import TypeCheck (typecheck)
 import ScopeCheck (scopecheck)
-import Grammar (pUnit, pName, runParser)
+import Grammar (pUnit, pName, runParser, initialParserState)
 
 parse path = do
   input <- readFile path
@@ -27,7 +27,7 @@ parse path = do
       putStrLn "Error in lexical analysis:" >> print err
       exitFailure
     Right tokens ->
-      case runParser pUnit () tokens of
+      case runParser pUnit initialParserState tokens of
         (Right (res,_),_) -> return res
         (res,rest) -> do
           putStrLn "*** Parse left residue (only 10 tokens shown):"

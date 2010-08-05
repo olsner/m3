@@ -5,6 +5,8 @@ module Grammar.Utils where
 import Control.Applicative
 import Control.Arrow (second)
 
+import Data.Map (Map)
+import qualified Data.Map as M
 import Data.Maybe
 
 import AST
@@ -14,11 +16,15 @@ import Grammar.Parser
 infixl 3 $>
 ($>) = flip (<$)
 
+type MParser a = Parser ParserState Token a
+
 token t = satisfy (show t) ((== t) . snd)
 lookToken t = satisfyLook (show t) ((== t) . snd)
 
 keyword str = token (Reserved str)
+
 parseJust msg f = second (fromJust . f) <$> satisfy msg (isJust . f . snd)
+
 identifier = parseJust "Identifier" fromIdentifier
 integer = second fromIntegral <$> parseJust "integer" fromIntegerTok
 string = parseJust "string" fromStringTok
@@ -48,3 +54,10 @@ listOf p = sepBy p (token Comma)
 pSimpleName = (\(_,nm) -> QualifiedName [nm]) <$> identifier
 pName = QualifiedName . map snd <$> sepBy1 identifier (token DoubleColon)
 
+data ParserState = PState (Map Name Type) deriving Show
+
+-- TODO Must build the state out of imported modules to see imported types
+initialParserState = PState M.empty
+
+lookupTypeIdentifier :: ParserState -> Name -> Maybe Type
+lookupTypeIdentifier (PState ids) name = M.lookup name ids

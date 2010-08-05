@@ -9,6 +9,7 @@ module Parser.Internal
   getState,
   putState,
   withState,
+  modifyState,
   satisfyLookState
   )
   where
@@ -127,3 +128,6 @@ putState s = P $ \_ ts -> (Success (s,s), ts)
 -- withState pure == getState
 withState :: (s -> Parser s t a) -> Parser s t a
 withState f = P $ \s ts -> let P p = f s in p s ts
+
+modifyState :: (s -> s) -> Parser s t ()
+modifyState f = P $ \s ts -> (Success ((), f s), ts)

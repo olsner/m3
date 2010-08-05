@@ -14,7 +14,7 @@ module Parser.Internal
   where
 
 import Control.Applicative
-import Control.Arrow (first,second)
+import Control.Arrow (first)
 
 import Debug.Trace
 
@@ -73,6 +73,13 @@ instance Alternative (Parser s t) where
   {-# INLINE (<|>) #-}
   (P p) <|> (P q) = P $ \s ts -> case p s ts of (Retry _, _) -> q s ts; r -> r
 
+instance Monad (Parser s t) where
+  return = pure
+  P x >>= y = P $ \s ts -> let (res,ts') = x s ts in case res of
+    Success (x,s') -> let P p = y x in p s' ts'
+    Retry msg -> (Retry msg,ts')
+    Error msg -> (Error msg,ts')
+
 -- | Make parse failure in 'p' a fatal parser error rather than a backtracking
 -- error.
 commit :: Parser s t a -> Parser s t a
@@ -106,26 +113,8 @@ eof :: Parser s t ()
 eof = P $ \s ts -> (if null ts then Success ((),s) else Retry "Expected end-of-file", ts)
 
 {-# INLINE satisfyLookState #-}
--- | Check the next token and current state against a predicate, return the
--- token if the predicate returns True, fail the parse otherwise. Also fails if
--- end of stream is reached and does *not* consume the token.
-satisfyLookState :: Show t => String -> (s -> t -> Bool) -> Parser s t t
-satisfyLookState msg p = P f
-  where
-    f _ [] = (Retry ("Parser.satisfy: expected "++msg++" instead of EOF"), [])
-    f s ts@(t:_)
-      | p s t = (Success (t,s), ts)
-      | True  = (Retry ("Parser.satisfy: expected "++msg++", found "++show t), ts)
-
-{-
--- Attempt at alternative implementation using only combinations of primitives
-satisfyLookState msg p = withState (f p msg) <*> lookNext
-  -- f :: (s -> t -> Bool) -> String -> s -> t -> Parser s t t
-  where
-    -- D'oh, not quite right: should be \s -> <parser>, but we need something
-    -- like \s t -> <parser> to be able to factor in the token type.
-    f p msg = \s t -> if p s t then pure t else failParse ("Parser.satisfyLookNext: expected "++msg++", found "++show t)
--}
+satisfyLookState :: Show t => String -> (s -> t -> Parser s t a) -> Parser s t a
+satisfyLookState msg p = (look <|> failParse ("Parser.satisfyLookState: expected "++msg++" instead of EOF")) >>= \t -> getState >>= \s -> (p s t <|> failParse ("Parser.satisfyLookState: expected "++msg++" but found "++show t))
 
 -- | Return the current state.
 getState :: Parser s t s

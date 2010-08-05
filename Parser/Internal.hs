@@ -1,17 +1,19 @@
 module Parser.Internal
-  (Parser(),
-  runParser,
-  commit,
-  failParse,
-  next,
-  look,
-  eof,
-  getState,
-  putState,
-  withState,
-  modifyState,
-  )
-  where
+  (Parser()
+  ,runParser
+
+  ,failParse
+  ,commit
+
+  ,next
+  ,look
+  ,eof
+
+  ,getState
+  ,putState
+  ,modifyState
+  ,withState
+  ) where
 
 import Control.Applicative
 import Control.Arrow (first)

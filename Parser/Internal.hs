@@ -1,3 +1,5 @@
+{-# LANGUAGE RankNTypes #-}
+
 module Parser.Internal
   (Parser()
   ,runParser
@@ -16,115 +18,102 @@ module Parser.Internal
   ) where
 
 import Control.Applicative
-import Control.Arrow (first)
 
-import Debug.Trace
+-- The three continuations: error (hard), retry (backtracking error), success.
 
-data Res a = Success a | Retry String | Error String
+-- The error continuation takes a list of tokens that were not consumed by the
+-- parser. Since retries can become hard failures, the retry continuation must
+-- be given as much information as the hard error continuation.
+-- The success continuation simply takes the "value" (in the functor/
+-- /applicative/monad) of the computation along with the updated state and
+-- rest-of-stream values.
 
--- | Convenience alias for the internal result type.
-type PTRes s t a = (Res (a,s), [t])
+type Error t r = [t] -> String -> r
+type Retry t r = Error t r
+type Success s t a r = a -> s -> [t] -> r
 
 -- | The main parser type. This takes three arguments: the state, the token
 -- type and the result type.
-newtype Parser s t a = P (s -> [t] -> PTRes s t a)
-
-{-# INLINE onP #-}
--- | Internal helper function: take a transformation on the internal result
--- type and use it to transform a Parser type.
-onP :: (PTRes s t a -> PTRes s t b) -> Parser s t a -> Parser s t b
-onP f (P p) = P $ \s ts -> f (p s ts)
+newtype Parser s t a = P (forall r . s -> [t] -> Success s t a r -> Retry t r -> Error t r -> r)
 
 -- | Run a parser. Takes a state and a list of tokens and returns the remaining
 -- tokens along with either an error message or a tuple of state and value
 -- result.
 runParser :: Parser s t a -> s -> [t] -> (Either String (a,s), [t])
-runParser (P p) s = first convert . p s
+runParser (P p) s ts = p s ts suc err err
   where
-    convert (Success x) = Right x
-    convert (Retry e) = Left e
-    convert (Error e) = Left e
-
-instance Functor Res where
-  fmap f (Success x) = Success (f x)
-  fmap _ (Retry e) = Retry e
-  fmap _ (Error e) = Error e
-instance Applicative Res where
-  pure = Success
-  Success f <*> Success x = Success (f x)
-  Success _ <*> Retry msg = Retry msg
-  Success _ <*> Error msg = Error msg
-  Retry msg <*> _ = Retry msg
-  Error msg <*> _ = Error msg
+    suc = \a s ts -> (Right (a,s),ts)
+    err = \ts msg -> (Left msg,ts)
 
 instance Functor (Parser s t) where
-  {-# INLINE fmap #-}
-  fmap f p = first (fmap (first f)) `onP` p
-
+  fmap f (P pcf) = P $ \s ts suc -> pcf s ts (suc . f)
 instance Applicative (Parser s t) where
-  {-# INLINE pure #-}
-  pure x = P $ \s ts -> (Success (x,s), ts)
-  pf <*> (P pa) = continue `onP` pf
-    where
-      continue (Error e, ts) = (Error e, ts)
-      continue (Retry e, ts) = (Retry e, ts)
-      continue (Success (f,s), ts) = first (fmap (first f)) $ pa s ts 
+  pure x = P $ \s ts suc _ _ -> suc x s ts
+  P ff <*> P fx = P $ \s ts suc retr err ->
+    let
+      suc' = \f s ts -> fx s ts (suc'' f) retr err 
+      suc'' f = \x s ts -> suc (f x) s ts
+    in ff s ts suc' retr err
 
 instance Alternative (Parser s t) where
+  -- Note: retry remembers its stream state - this allows a later soft-made-hard
+  -- failure to provide the "rest of stream" to the parser user.
   empty = failParse "Alternative.empty"
-  {-# INLINE (<|>) #-}
-  (P p) <|> (P q) = P $ \s ts -> case p s ts of (Retry _, _) -> q s ts; r -> r
+  -- Run x with retry pointing to just running y from the current position.
+  -- Error continuation remains the same (it will point outside of the parser)
+  P x <|> P y = P $ \s ts suc retr err ->
+    x s ts suc (\_ _ -> y s ts suc retr err) err
 
 instance Monad (Parser s t) where
   return = pure
-  P x >>= y = P $ \s ts -> let (res,ts') = x s ts in case res of
-    Success (x,s') -> let P p = y x in p s' ts'
-    Retry msg -> (Retry msg,ts')
-    Error msg -> (Error msg,ts')
+  P x >>= y = P $ \s ts suc retr err ->
+    let
+      suc' = \x s ts -> let P f = y x in f s ts suc retr err
+    in x s ts suc' retr err
 
 -- | Make parse failure in 'p' a fatal parser error rather than a backtracking
 -- error.
 commit :: Parser s t a -> Parser s t a
-commit (P p) = P $ \s ts -> case p s ts of
-  (Retry e, ts) -> trace "Retry caught in commit" (Error ("commit: "++e), ts)
-  other -> other
+commit (P p) = P $ \s ts suc _ err -> p s ts suc err err
+-- i.e: simply replace the retry-continuation with the hard failure one.
 
 -- | Cause a parse failure with the given message.
 failParse :: String -> Parser s t a
-failParse e = {-trace ("failParse: "++e) $-} P $ \_ ts -> (Retry e, ts)
+failParse msg = P $ \_ ts _ retr _ -> retr ts msg
+
+nextLook :: String -> ([t] -> [t]) -> Parser s t t
+nextLook msg f = P $ \s ts suc retr _ -> case ts of
+  [] -> retr ts (msg++": EOF")
+  (t:_) -> suc t s (f ts)
 
 {-# INLINE next #-}
 -- | Return and consume the next token. Fail the parse if at end of stream.
 next :: Parser s t t
-next = P f
-  where
-    -- guardM (gets (not . null)) "Ran out of input (EOF)" >> (gets head <* modify tail)
-    f _ [] = (Retry "Ran out of input (EOF)", [])
-    f s (t:ts) = (Success (t,s), ts)
+next = nextLook "next" tail
 
 -- | Return the next token but do not consume it. Fail the parse if at end of
 -- stream.
 look :: Parser s t t
-look = P f
-  where
-    f _ [] = (Retry "Ran out of input (EOF)", [])
-    f s ts@(t:_) = (Success (t,s), ts)
+look = nextLook "look" id
 
 -- | Match only if at end of stream.
 eof :: Parser s t ()
-eof = P $ \s ts -> (if null ts then Success ((),s) else Retry "Expected end-of-file", ts)
+eof = P $ \s ts suc retr _ -> case ts of
+  [] -> suc () s ts
+  _ -> retr ts ("eof: Not EOF")
 
 -- | Return the current state.
 getState :: Parser s t s
-getState = P $ \s ts -> (Success (s,s), ts)
+getState = P $ \s ts suc _ _ -> suc s s ts
+
 -- | Replace the state entirely. Note: when backtracking past this call, the
 -- state will be discarded and parsing will continue with the previous state.
 putState :: s -> Parser s t s
-putState s = P $ \_ ts -> (Success (s,s), ts)
+putState s = P $ \_ ts suc _ _ -> suc s s ts
 
--- withState pure == getState
+-- | Similar to (getState >>=).
 withState :: (s -> Parser s t a) -> Parser s t a
-withState f = P $ \s ts -> let P p = f s in p s ts
+withState f = P $ \s ts suc -> let P p = f s in p s ts suc
 
 modifyState :: (s -> s) -> Parser s t ()
-modifyState f = P $ \s ts -> (Success ((), f s), ts)
+modifyState f = P $ \s ts suc _ _ -> suc () (f s) ts

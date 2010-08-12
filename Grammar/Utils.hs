@@ -61,3 +61,6 @@ initialParserState = PState M.empty
 
 lookupTypeIdentifier :: ParserState -> Name -> Maybe Type
 lookupTypeIdentifier (PState ids) name = M.lookup name ids
+
+stateAddType :: Name -> Type -> MParser ()
+stateAddType name typ = modifyState (\(PState m) -> PState (M.insert name typ m))

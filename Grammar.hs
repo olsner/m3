@@ -46,21 +46,20 @@ pVarargParam = VarargParam <$ token Ellipsis
 pCompoundStatement = CompoundStmt [] <$> inBraces (commit (many pStatement))
 pStatement = choice
   [token Semicolon $> EmptyStmt
+  ,localTypedef <$> pTypedef
+  ,VarDecl <$> pVarDecl (,,)
   ,ReturnStmt <$> (keyword "return" *> pExpression <* commit (token Semicolon))
   ,ReturnStmtVoid <$ (keyword "return" *> commit (token Semicolon))
   ,ExprStmt <$> pExpression <* commit (token Semicolon)
-  -- Note: This syntax defines the scope of a variable as "everything until the next closing brace. I this (really) correct? No it isn't...
-  -- TODO: What happens with e.g. if (foo) type var; !?
-  ,VarDecl <$> pVarDecl (,,)
   ,pCompoundStatement
   ,keyword "if" *> commit (IfStmt <$> inParens pExpression <*> pStatement <*> (fromMaybe EmptyStmt <$> optional pElse))
   ,keyword "while" *> commit (WhileStmt <$> inParens pExpression <*> pStatement)
   ] <|> failParse "Out of luck in pStatement"
 
-pVarDecl :: (Type -> Name -> Maybe ExprF -> a) -> MParser [a]
-pVarDecl f = mkVarDecl f <$> pType <*> sepBy1 ((,) <$> pName <*> optional pVarInitializer) (token Comma) <* token Semicolon
-mkVarDecl :: Show e => (Type -> Name -> Maybe e -> a) -> Type -> [(Name,Maybe e)] -> [a]
-mkVarDecl varDecl typ vars = map (uncurry (varDecl typ)) vars
+localTypedef (Decl name (TypeDef typ)) = TypDecl name typ
+
+pVarDecl f = genVarDecl f (optional pVarInitializer)
+
 pVarInitializer = token Assignment *> pInitializationExpression
 pElse = keyword "else" *> pStatement
 

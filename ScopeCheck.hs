@@ -101,6 +101,8 @@ preCheck = f -- traceFunM "preCheck" f
     f x@(ExprStmt _) = return x
     f x@(ReturnStmt _) = return x
     f EmptyStmt = return EmptyStmt
+    -- TODO Should be handled as variable declarations to properly handle shadowing and duplicates.
+    f x@(TypDecl _ _) = return x
     f x = scError ("Unknown statement in scope check: "++show x)
 
 getVars :: Show e => [Statement e] -> ([(Type,Name,Maybe e)], [Statement e])
@@ -119,6 +121,8 @@ convertVarDecls :: Statement ExprF -> ([Statement ExprF] -> [Statement ExprF])
 convertVarDecls stmt = case stmt of
   (CompoundStmt [] stmts) -> let (vars,tail) = getVars stmts in \k -> CompoundStmt vars (mapCont convertVarDecls tail) : k
   (VarDecl vars) -> (:[]) . CompoundStmt vars
+  -- Currently, type declarations don't introduce scoped bindings but are resolved directly at parse time.
+  (TypDecl _ _) -> id
   (IfStmt c t f) -> (IfStmt c (convertVarDecl1 t) (convertVarDecl1 f):)
   (WhileStmt c body) -> (WhileStmt c (convertVarDecl1 body):)
   x -> (:) x

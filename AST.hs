@@ -45,6 +45,7 @@ data Show e => Statement e =
   -- into nested CompoundStmt's after checking for conflicting variables as part of the
   -- scopechecking.
   | VarDecl [(Type,Name,Maybe e)]
+  | TypDecl Name Type
   | CompoundStmt [(Type,Name,Maybe e)] [Statement e]
   | IfStmt e (Statement e) (Statement e)
   | WhileStmt e (Statement e)
@@ -63,6 +64,7 @@ data Def e =
   | FunctionDef { funReturnType :: Type, funArgs :: FormalParams, funCode :: Statement e }
   | ExternalFunction { funLinkage :: Maybe String, funReturnType :: Type, funArgs :: FormalParams }
   | VarDef Type (Maybe e)
+  | TypeDef Type
 
   deriving (Show,Eq,Data,Typeable)
 

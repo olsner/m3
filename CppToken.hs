@@ -154,6 +154,7 @@ reservedWords =
     ,"struct"
     ,"template"
     ,"true"
+    ,"type"
     ,"typedef"
     ,"typename"
     ,"unsigned"

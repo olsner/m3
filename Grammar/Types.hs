@@ -28,9 +28,9 @@ pLeftType = choice
   ] <|> failParse "Out of luck in pLeftType"
 pArraySuffix = maybe id TArray <$> optional (snd <$> inBrackets integer)
 
-pTypedef = choice
-  [keyword "type" *> ((,) <$> pName <*> (token Assignment *> pType))
-  ] >>= \(name,typ) -> stateAddType name typ >> return (Decl name (TypeDef typ))
+pTypedef f = choice
+  [keyword "type" *> ((,) <$> pName <*> (token Assignment *> pType)) <* token Semicolon
+  ] >>= \(name,typ) -> stateAddType name typ >> return (f name typ)
 
 genVarDecl :: (Type -> Name -> b -> a) -> MParser b -> MParser [a]
 genVarDecl f init = mkVarDecl f <$> pType <*> sepBy1 ((,) <$> pName <*> init) (token Comma) <* token Semicolon

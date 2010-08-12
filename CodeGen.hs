@@ -146,6 +146,7 @@ cgDef name local def = case def of
   (VarDef t Nothing) -> do
     tell ("@"++encodeName name++" = global linker_private "++encodeType t++" undef\n")
   (VarDef _ _) -> error ("Weird VarDef: "++show def)
+  (TypeDef _) -> return ()
 
 cgFunBody :: MonadIO m => Statement TypedE -> CGMT m ()
 cgFunBody = cgStmt

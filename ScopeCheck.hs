@@ -150,8 +150,8 @@ renameShadowed = f -- traceFunM "renameShadowed" f
     f (VarDecl _) = scError "VarDecl left over from rewrite step!"
     f (ExprStmt e) = ExprStmt <$> g e
     f (ReturnStmt e) = ReturnStmt <$> g e
-    f EmptyStmt = return EmptyStmt
-    f ReturnStmtVoid = return ReturnStmtVoid
+    f x@EmptyStmt = return x
+    f x@ReturnStmtVoid = return x
     --f x = scError ("Unhandled statement: "++show x)
 
     g = everywhereM (mkM g_)

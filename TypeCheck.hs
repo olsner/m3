@@ -128,6 +128,7 @@ tcDef name local def = traceM ("tcDef "++show name++": "++show def) $ case def o
           _ -> typ
     addBinding name (Var Global typ')
     VarDef typ <$> maybeM (tcExprAsType typ') e
+  (TypeDef typ) -> return (TypeDef typ)
 
 maybeM :: Applicative m => (a -> m b) -> Maybe a -> m (Maybe b)
 maybeM f (Just x) = Just <$> f x

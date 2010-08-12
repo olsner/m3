@@ -23,7 +23,12 @@ pUnit = Unit <$> many pImport <*> (pModule <|> head <$> pFunction) <* eof
 
 pModule = keyword "module" *> (Decl <$> pName) <* token Semicolon <*> (ModuleDef . concat <$> commit (many pTopLevelDecl))
 pTopLevelDecl :: MParser [Decl ExprF]
-pTopLevelDecl = pExternalFunction <|> pFunction <|> (pVarDecl (\typ name e -> Decl name (VarDef typ e)))
+pTopLevelDecl = choice
+  [pExternalFunction
+  ,pFunction
+  ,pVarDecl (\typ name e -> Decl name (VarDef typ e))
+  ,pTypedef (\name typ -> [Decl name (TypeDef typ)])
+  ]
 
 pImport :: MParser Name
 pImport = keyword "import" *> pName <* token Semicolon
@@ -36,9 +41,6 @@ pExternalFunction = keyword "extern" *> commit (
       <* token Semicolon)
 
 pFormalParamList = inParens (listOf $ choice [pFormalParam, pVarargParam])
-  -- TODO Move somewhere - typechecker?
-  -- guardMsg (validateFormalParams xs) "Invalid formal parameter list - vararg ellipsis must be last parameter."
-  -- return xs
 
 pFormalParam = FormalParam <$> pType <*> optional pSimpleName
 pVarargParam = VarargParam <$ token Ellipsis
@@ -46,7 +48,7 @@ pVarargParam = VarargParam <$ token Ellipsis
 pCompoundStatement = CompoundStmt [] <$> inBraces (commit (many pStatement))
 pStatement = choice
   [token Semicolon $> EmptyStmt
-  ,localTypedef <$> pTypedef
+  ,pTypedef TypDecl
   ,VarDecl <$> pVarDecl (,,)
   ,ReturnStmt <$> (keyword "return" *> pExpression <* commit (token Semicolon))
   ,ReturnStmtVoid <$ (keyword "return" *> commit (token Semicolon))
@@ -55,8 +57,6 @@ pStatement = choice
   ,keyword "if" *> commit (IfStmt <$> inParens pExpression <*> pStatement <*> (fromMaybe EmptyStmt <$> optional pElse))
   ,keyword "while" *> commit (WhileStmt <$> inParens pExpression <*> pStatement)
   ] <|> failParse "Out of luck in pStatement"
-
-localTypedef (Decl name (TypeDef typ)) = TypDecl name typ
 
 pVarDecl f = genVarDecl f (optional pVarInitializer)
 

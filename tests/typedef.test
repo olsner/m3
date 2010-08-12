@@ -7,3 +7,15 @@ return i-7;
 >>>
 >>>2
 >>>= 0
+
+./test_main.sh
+<<<
+// No semicolon: should be parse failure
+// TODO Expect correct message
+type foo = int
+>>>= 1
+
+./test.sh toplevel_typedef1
+>>>
+>>>2
+>>>= 0

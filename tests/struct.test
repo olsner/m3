@@ -1,0 +1,8 @@
+./test_main.sh
+<<<
+// Simple test: just that it parses.
+type bar = struct { int a; [const char] b; };
+bar var;
+return 0;
+>>>
+>>>=0

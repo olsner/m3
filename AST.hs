@@ -80,6 +80,7 @@ data Type =
   | TNullPtr -- pointer of any type...
   | TArray Int Type
   | TFunction Type [FormalParam]
+  | TStruct [(Name,Type)]
   deriving (Show,Eq,Ord,Data,Typeable)
 
 data TypedE = TypedE Type (Expr TypedE) deriving (Show,Eq,Data,Typeable)

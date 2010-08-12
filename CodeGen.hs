@@ -108,8 +108,11 @@ encodeType TVoid = "void"
 encodeType (TConst t) = encodeType t
 encodeType (TFunction t params) = encodeType t++"("++intercalate "," (map (encodeFormal False) params)++")"
 encodeType (TArray len typ) = "["++show len++" x "++encodeType typ++"]"
+encodeType (TStruct fields) = "{"++intercalate "," (map encodeField fields)++"}"
 encodeType TNullPtr = encodeType (TPtr TVoid)
 --encodeType other = error ("encodeType "++show other)
+
+encodeField (name,typ) = encodeType typ
 
 -- | Encode a formal parameter as a LLVM type (e.g. "i32") or type + name (as "i32 %param")
 encodeFormal :: Bool        -- ^ Include variable name for parameter lists?

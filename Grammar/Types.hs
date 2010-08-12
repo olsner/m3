@@ -16,6 +16,8 @@ typeIdentifier = satisfyLookState "type identifier" f <* next
     f s (pos,Identifier id) = maybe empty pure (lookupTypeIdentifier s (QualifiedName [id]))
     f s _ = empty
 
+pStructField = genVarDecl (\typ name () -> (name, typ)) (pure ())
+
 pType = pLeftType <**> pArraySuffix
 pLeftType = choice
   [keyword "void" $> TVoid
@@ -23,6 +25,7 @@ pLeftType = choice
   ,keyword "char" $> TChar
   ,keyword "bool" $> TBool
   ,keyword "const" *> (TConst <$> pType)
+  ,keyword "struct" *> (TStruct <$> inBraces (concat <$> many pStructField))
   ,inBrackets (commit (TPtr <$> pType))
   ,typeIdentifier
   ] <|> failParse "Out of luck in pLeftType"

@@ -222,6 +222,17 @@ tcExpr e = case outF e of
           TArray _ elem -> return elem
           _ -> tcError ("Indexing performed on non-indexable type "++show arrT)
     return (TypedE elemType (EArrayIndex arr' ix'))
+  (EFieldAccess field el) -> do
+    (TypedE typ exp) <- tcExpr el
+    trace ("EFieldAccess: "++show typ++" "++show exp++", "++show field) $ return ()
+    ft <- case typ of
+          TStruct fields -> case lookup field fields of
+            Just ft -> return ft
+            Nothing -> tcError ("Field "++show field++" not found in struct "++show typ)
+          _ -> tcError ("Accessing field "++show field++" in non-struct type "++show typ)
+    case exp of
+      EDeref struct -> return (TypedE ft (EDeref (TypedE (TPtr ft) (EFieldAccess field struct))))
+      struct -> return (TypedE ft (EFieldAccess field (TypedE typ struct)))
   (EPostfix op e) -> do
     -- must be an lvalue
     e@(TypedE typ ptrExpr) <- tcExpr e

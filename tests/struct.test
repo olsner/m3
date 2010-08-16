@@ -6,3 +6,13 @@ bar var;
 return 0;
 >>>
 >>>=0
+
+./test_main.sh
+<<<
+// More advanced test: assign and read struct fields
+type bar = struct { int a; };
+bar var;
+var.a = 7;
+return var.a;
+>>>
+>>>=7

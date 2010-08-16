@@ -1,4 +1,4 @@
-{-# LANGUAGE NoMonomorphismRestriction,ScopedTypeVariables,ExistentialQuantification,FlexibleContexts,RankNTypes #-}
+{-# LANGUAGE NoMonomorphismRestriction,ScopedTypeVariables,ExistentialQuantification,FlexibleContexts,RankNTypes,PatternGuards #-}
 {-# OPTIONS_HADDOCK ignore-exports #-}
 
 module CodeGen (printLLVM) where
@@ -112,7 +112,10 @@ encodeType (TStruct fields) = "{"++intercalate "," (map encodeField fields)++"}"
 encodeType TNullPtr = encodeType (TPtr TVoid)
 --encodeType other = error ("encodeType "++show other)
 
-encodeField (name,typ) = encodeType typ
+encodeField (_,typ) = encodeType typ
+structFieldOffset (TStruct fields) name | Just ix <- findIndex ((==name).fst) fields = return ix
+structFieldOffset (TPtr t@(TStruct _)) name = structFieldOffset t name
+structFieldOffset typ name = cgError ("structFieldOffset: failed looking up "++show name++" in "++show typ)
 
 -- | Encode a formal parameter as a LLVM type (e.g. "i32") or type + name (as "i32 %param")
 encodeFormal :: Bool        -- ^ Include variable name for parameter lists?
@@ -167,9 +170,14 @@ br target = line ("br label %"++target)
 brIf cond true false = line ("br "++valueText cond++", label %"++true++", label %"++false)
 label lbl m = tell (lbl++":\n") >> m
 getelementptr base xs = "getelementptr "++valueText base++","++valueTextList xs
-zero = mkValue ConstExpr TBool "0"
-one = mkValue ConstExpr TInt "1"
-minusOne = mkValue ConstExpr TInt "-1"
+extractvalue :: Value -> Int -> String
+extractvalue base x = "extractvalue "++valueText base++", "++show x
+false = intValue 0
+zero = intValue 0 TInt
+one = intValue 1 TInt
+minusOne = intValue (-1) TInt
+intValue :: Int -> Type -> Value
+intValue i t = mkValue ConstExpr t (show i)
 bitcast value to = "bitcast " ++ valueText value ++ " to " ++ encodeType to
 trunc value to = "trunc " ++ valueText value ++ " to " ++ encodeType to
 
@@ -270,6 +278,12 @@ cgExpr typ e = case e of
     ix' <- cgTypedE ix
     elptr <- withFresh (TPtr elem) (=% getelementptr arr' [ix'])
     withFresh elem (=% load elptr)
+  (EFieldAccess name struct@(TypedE structT _)) -> do
+    v <- cgTypedE struct
+    ix <- structFieldOffset structT name
+    case typ of
+      TPtr _ -> withFresh typ (=% getelementptr v [zero, intValue ix TInt])
+      _ -> withFresh typ (=% extractvalue v ix)
   (EPostfix op lval) -> do
     let (TypedE _ (EDeref loc)) = lval
     lv <- cgTypedE loc
@@ -282,7 +296,7 @@ cgExpr typ e = case e of
     lv <- cgTypedE expr
     cgCast to from lv
   ENullPtr -> return (mkValue ConstExpr TNullPtr "null")
-  other -> error ("Unimplemented expression: "++show other)
+  other -> error ("cgExpr: Unimplemented expression: "++show other)
 
 icmp op typ x y = withFresh typ (=% unwords ["icmp",op,valueText x++",",valueTextNoType y])
 cmpBinop tok op pos typ = case typ of 
@@ -337,7 +351,7 @@ cgCast to from lv
   | otherwise = error ("cgCast: Unimplemented cast from "++show from++" to "++show to)
 
 cgUnary typ (pos,LogicalNot) = \val -> do
-    v <- getBinopCode Equal pos typ zero val
+    v <- getBinopCode Equal pos typ (false typ) val
     cgCast typ TBool v
 cgUnary typ (_pos,Minus) = \val -> withFresh typ (=% "sub "++encodeType typ++" 0, "++valueTextNoType val)
 

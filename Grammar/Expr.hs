@@ -80,6 +80,7 @@ pPostfixExpression = pPrimaryExpression <**?> choice
   ,(InF .) <$> flip EFunCall <$> inParens pExpressionList
   ,(InF .) <$> flip EArrayIndex <$> inBrackets pExpression
   -- ,(InF .) <$> ETypeApp <$> inTypeBrackets (listOf pType)
+  ,(InF .) <$> EFieldAccess <$> (token Dot *> pName)
   ]
 
 pPrimaryExpression = choice

@@ -78,6 +78,7 @@ withDef name local def = traceM (printf "withDef %s local %s: %s" (show name) (s
   (FunctionDef retT args _) -> inScope name (Var NonConst (TFunction retT args)) . inScope local (Alias name)
   (ExternalFunction _ ret args) -> inScope name (Var NonConst (TFunction ret args)) . inScope local (Alias name)
   (VarDef typ _) -> inScope name (Var Global typ) . inScope local (Alias name)
+  (TypeDef _) -> error ("Imported typedefs not supported: "++show name)
 
 withImport name m = do
   unit <- tcUnitByName name

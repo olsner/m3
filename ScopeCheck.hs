@@ -148,6 +148,7 @@ renameShadowed = f -- traceFunM "renameShadowed" f
     f (IfStmt cond t f) = IfStmt <$> g cond <*> inNewScope (renameShadowed t) <*> inNewScope (renameShadowed f)
     f (WhileStmt cond body) = WhileStmt <$> g cond <*> inNewScope (renameShadowed body)
     f (VarDecl _) = scError "VarDecl left over from rewrite step!"
+    f (TypDecl _ _) = scError "TypDecl left over from rewrite step!"
     f (ExprStmt e) = ExprStmt <$> g e
     f (ReturnStmt e) = ReturnStmt <$> g e
     f x@EmptyStmt = return x

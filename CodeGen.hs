@@ -202,6 +202,7 @@ cgStmt stmt = case stmt of
   (ExprStmt expr) -> cgTypedE expr >> return ()
   CompoundStmt vars xs -> withVars vars (mapM_ cgStmt xs)
   (VarDecl _) -> error "Internal error: VarDecl in CodeGen!"
+  (TypDecl _ _) -> error "Internal error: TypDecl in CodeGen!"
   (IfStmt cond t f) -> do
     c <- cgTypedE cond
     tblock <- freshLabel

@@ -45,7 +45,7 @@ satisfyLookState msg p = (look <|> failParse ("Parser.satisfyLookState: expected
 {-# INLINE satisfyLook #-}
 -- | Like satisfyLookState but the predicate does not look at the state.
 satisfyLook :: Show t => String -> (t -> Bool) -> Parser s t t
-satisfyLook msg p = satisfyLookState msg (\s t -> if p t then pure t else empty)
+satisfyLook msg p = satisfyLookState msg (\_ t -> if p t then pure t else empty)
 {-# INLINE satisfy #-}
 -- | Like satisfyLook but also consumes the token.
 satisfy :: Show t => String -> (t -> Bool) -> Parser s t t

@@ -1,4 +1,4 @@
-{-# LANGUAGE NoMonomorphismRestriction,ScopedTypeVariables,ExistentialQuantification,FlexibleContexts,RankNTypes,PatternGuards #-}
+{-# LANGUAGE NoMonomorphismRestriction,FlexibleContexts,RankNTypes,PatternGuards #-}
 {-# OPTIONS_HADDOCK ignore-exports #-}
 
 module CodeGen (printLLVM) where
@@ -232,6 +232,7 @@ cgStmt stmt = case stmt of
 
 withFresh typ m = fresh >>= \r -> let v = mkValue Variable typ r in v <$ m v
 
+cgTypedE :: TypedE -> CGM Value
 cgTypedE (TypedE t e) = cgExpr t e
 cgExpr :: Type -> Expr TypedE -> CGM Value
 cgExpr typ e = case e of
@@ -355,6 +356,7 @@ cgUnary typ (pos,LogicalNot) = \val -> do
     v <- getBinopCode Equal pos typ (false typ) val
     cgCast typ TBool v
 cgUnary typ (_pos,Minus) = \val -> withFresh typ (=% "sub "++encodeType typ++" 0, "++valueTextNoType val)
+cgUnary typ tok = error ("Unhandled unary operator: "++show tok++" for type "++show typ)
 
 {-type VC a = CounterT Int (State (Set Name, Map Name Name)) a
 runVC :: VC a -> a

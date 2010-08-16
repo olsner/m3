@@ -13,8 +13,8 @@ import Grammar.Utils
 typeIdentifier = satisfyLookState "type identifier" f <* next
   where
     -- TODO should use a parser-for-names instead.
-    f s (pos,Identifier id) = maybe empty pure (lookupTypeIdentifier s (QualifiedName [id]))
-    f s _ = empty
+    f s (_pos,Identifier id) = maybe empty pure (lookupTypeIdentifier s (QualifiedName [id]))
+    f _ _ = empty
 
 pStructField = genVarDecl (\typ name () -> (name, typ)) (pure ())
 

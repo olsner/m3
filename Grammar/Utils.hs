@@ -18,11 +18,13 @@ infixl 3 $>
 
 type MParser a = Parser ParserState Token a
 
+{-# INLINE token #-}
 token t = satisfy (show t) ((== t) . snd)
 lookToken t = satisfyLook (show t) ((== t) . snd)
 
 keyword str = token (Reserved str)
 
+{-# INLINE parseJust #-}
 parseJust msg f = second (fromJust . f) <$> satisfy msg (isJust . f . snd)
 
 identifier = parseJust "Identifier" fromIdentifier

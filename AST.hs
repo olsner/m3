@@ -109,8 +109,6 @@ data Type =
   | TStruct [Loc (Name,Type)]
   deriving (Show,Eq,Ord,Data,Typeable)
 
-data TypedE = TypedE Type (Expr TypedE) deriving (Show,Eq,Data,Typeable)
-
 data Expr e =
     EFunCall e [e]
   | EBinary Token e e
@@ -134,8 +132,6 @@ data Expr e =
   | ENullPtr
   deriving (Show,Eq,Data,Typeable)
 
-data ExprF = InF { outF :: Expr ExprF } deriving (Eq,Data,Typeable)
-
-instance Show ExprF where
-  showsPrec d (InF e) = showsPrec (d+1) e
+data TypedE = TypedE Type (Expr TypedE) deriving (Show,Eq,Data,Typeable)
+data LocE = LocE Location (Expr LocE) deriving (Show,Eq,Data,Typeable)
 

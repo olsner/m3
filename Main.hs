@@ -56,7 +56,7 @@ tryImportModule name path = do
 
 includePath = ["stdlib", "tests"]
 
-type ModMap = Map Name (Unit ExprF)
+type ModMap = Map Name (Unit LocE)
 type ModT = StateT ModMap
 type Mod = ModT IO
 
@@ -66,7 +66,7 @@ ifNotLoaded name m = gets (M.lookup name) >>= \res -> case res of
   Just modul -> return modul
   Nothing -> m >>= \modul -> modul <$ modify (M.insert name modul)
 
-processImport :: Name -> Mod (Unit ExprF)
+processImport :: Name -> Mod (Unit LocE)
 processImport name = ifNotLoaded name $ do
   res <- liftIO $ firstM (tryImportModule name) includePath
   case res of

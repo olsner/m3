@@ -252,10 +252,10 @@ cgExpr typ e = case e of
       (Just val) -> return val
       _ -> return (mkValue ConstExpr typ ('@':encodeName name))
   (EArrToPtr (TypedE arrT arr)) -> do
-    let (arrT',arrelem) = case arrT of
-          (TArray _ arrelem) -> (TPtr arrT, arrelem)
-          (TPtr (TArray _ arrelem)) -> (arrT, arrelem)
-          typ -> error ("EArrToPtr on something not array or ptr-to-array: "++show typ++" in "++show e)
+    (arrT',arrelem) <- case arrT of
+          (TArray _ arrelem) -> return (TPtr arrT, arrelem)
+          (TPtr (TArray _ arrelem)) -> return (arrT, arrelem)
+          typ -> cgError ("EArrToPtr on something not array or ptr-to-array: "++show typ++" in "++show e)
     v <- cgExpr arrT' arr
     -- lift (liftIO (printf "EArrToPtr: %s -> %s\n" (show e) (show typ)))
     case valueKind v of

@@ -24,7 +24,7 @@ import Counter() -- Also implements Applicative for StateT o.o
 
 data VarType = Const | Global | NonConst deriving (Show)
 data Binding = Var VarType Type | Alias Name deriving (Show)
-type ModBinding = Either (Unit ExprF) (Unit TypedE)
+type ModBinding = Either (Unit LocE) (Unit TypedE)
 type ModMap = Map Name ModBinding
 data TCState = TCState { bindings :: Map Name Binding, modules :: ModMap }
 type TC = StateT TCState
@@ -32,7 +32,7 @@ type TC = StateT TCState
 runTC m = runStateT m . TCState M.empty
 
 tcError :: Location -> String -> TC m a
-tcError loc msg = error (show loc ++ ": " ++ msg)
+tcError loc msg = error ("[TC] "++show loc ++ ": " ++ msg)
 
 modifyBindings f = modify (\s -> s { bindings = f (bindings s) })
 modifyModules f = modify (\s -> s { modules = f (modules s) })
@@ -61,7 +61,7 @@ inScope name bind m = do
   modifyBindings (const s)
   return r
 
-typecheck :: (Functor m, MonadIO m, MonadReader (Map Name (Unit ExprF)) m) => Name -> m (Map Name (Unit TypedE))
+typecheck :: (Functor m, MonadIO m, MonadReader (Map Name (Unit LocE)) m) => Name -> m (Map Name (Unit TypedE))
 typecheck name = do
   mods <- asks (M.map Left)
   snd . M.mapEither id . modules . snd <$> runTC (tcUnitByName name) mods
@@ -101,21 +101,21 @@ tcUnitByName name = do
 -- instead whenever there's recursion.
 putBlackhole name = putModule name (error "Recursive module inclusion")
 
-tcUnit :: MonadIO m => Name -> Unit ExprF -> TC m (Unit TypedE)
+tcUnit :: MonadIO m => Name -> Unit LocE -> TC m (Unit TypedE)
 tcUnit name (Unit imports decl) = traceM ("tcUnit "++show name) $ do
   putBlackhole name
   unit <- Unit imports <$> foldr withImport (tcDecl (QualifiedName []) decl) imports
   putModule name (Right unit)
   return unit
 
-tcDecl :: MonadIO m => Name -> LocDecl ExprF -> TC m (LocDecl TypedE)
+tcDecl :: MonadIO m => Name -> LocDecl LocE -> TC m (LocDecl TypedE)
 tcDecl name (Loc loc decl@(Decl local def)) = traceM (printf "tcDecl %s %s %s" (show name)(show local) (show decl)) $
   Loc loc <$> Decl local <$> tcDef loc (qualifyName name local) local def
 
 invalidFormalParams [] = False
 invalidFormalParams xs = any (== VarargParam) (init xs)
 
-tcDef :: MonadIO m => Location -> Name -> Name -> Def ExprF -> TC m (Def TypedE)
+tcDef :: MonadIO m => Location -> Name -> Name -> Def LocE -> TC m (Def TypedE)
 tcDef loc name local def = traceM ("tcDef ("++show loc++") "++show name++": "++show def) $ case def of
   (ModuleDef decls) -> ModuleDef <$> mapM (tcDecl name) decls
   (FunctionDef retT args code) -> do
@@ -139,10 +139,10 @@ maybeM :: Applicative m => (a -> m b) -> Maybe a -> m (Maybe b)
 maybeM f (Just x) = Just <$> f x
 maybeM _ Nothing = pure Nothing
 
-inScopeVars :: MonadIO m => [VarDecl ExprF] -> ([VarDecl TypedE] -> TC m a) -> TC m a
+inScopeVars :: MonadIO m => [VarDecl LocE] -> ([VarDecl TypedE] -> TC m a) -> TC m a
 inScopeVars vars m = f [] vars
   where
-    -- f :: [(Name,Type,Maybe TypedE)] -> [(Name,Type,Maybe ExprF)] -> TC m a
+    -- f :: [(Name,Type,Maybe TypedE)] -> [(Name,Type,Maybe LocE)] -> TC m a
     f acc [] = m (reverse acc)
     f acc (lv@(Loc _ v@(_,name,_)):vs) = inScope name var (tcVar lv >>= \v' -> f (v':acc) vs)
       where
@@ -155,7 +155,7 @@ inScopeVars vars m = f [] vars
     g loc (TConst _) Nothing = tcError loc "Constant variable without initializer"
     g _ typ init = maybeM (tcExprAsType typ) init
 
-tcStmt :: MonadIO m => Type -> [FormalParam] -> LocStatement ExprF -> TC m (LocStatement TypedE)
+tcStmt :: MonadIO m => Type -> [FormalParam] -> LocStatement LocE -> TC m (LocStatement TypedE)
 tcStmt ret args (Loc loc stmt) = traceM ("tcStmt "++show stmt) $ Loc loc <$> case stmt of
   (ReturnStmt e)     -> ReturnStmt <$> tcExprAsType ret e
   (ExprStmt e)       -> ExprStmt <$> tcExpr e
@@ -175,22 +175,22 @@ implicitlyConvertType to orig@(TypedE from _) =
     Just fun -> Just (fun orig)
     Nothing -> Nothing
 
-tcExprAsType :: MonadIO m => Type -> ExprF -> TC m TypedE
-tcExprAsType expT e = do
+tcExprAsType :: MonadIO m => Type -> LocE -> TC m TypedE
+tcExprAsType expT e@(LocE loc _) = do
   typed@(TypedE t _) <- tcExpr e
   case implicitlyConvertType expT typed of
     Just typed' -> return typed'
-    Nothing -> tcError dummyLocation ("Expression "++show typed++" not of expected type "++show expT++" but "++show t++", and no implicit conversions were available")
+    Nothing -> tcError loc ("Expression "++show typed++" not of expected type "++show expT++" but "++show t++", and no implicit conversions were available")
 
-tcParams :: MonadIO m => [FormalParam] -> [ExprF] -> TC m [TypedE]
+tcParams :: MonadIO m => [FormalParam] -> [LocE] -> TC m [TypedE]
 tcParams (FormalParam typ _:ps) (x:xs) = liftM2 (:) (tcExprAsType typ x) (tcParams ps xs)
 tcParams [VarargParam]          xs     = mapM tcExpr xs
 tcParams (VarargParam:_)        _      = tcError dummyLocation "Vararg param in non-last position. The type-checker should have caught this already!"
 tcParams []                     []     = return []
 tcParams formal                 actual = tcError dummyLocation ("Argument number mismatch. Remaining formals: "++show formal++", actuals: "++show actual)
 
-tcExpr :: MonadIO m => ExprF -> TC m TypedE
-tcExpr e = case outF e of
+tcExpr :: MonadIO m => LocE -> TC m TypedE
+tcExpr (LocE loc e) = case e of
   (EBool b) -> return (TypedE TBool (EBool b))
   (EInt i) -> return (TypedE TInt (EInt i))
   (EString str) -> return (TypedE (TPtr (TConst TChar)) (EString str))
@@ -258,9 +258,6 @@ tcExpr e = case outF e of
     when (not (checkCast to typ)) $ tcError loc ("Invalid cast from "++show typ++" to "++show to)
     return (TypedE to (ECast to typed))
   other -> tcError loc ("tcExpr: Unknown expression "++show other)
-
-  where
-    loc = dummyLocation
 
 checkCast (TPtr _) (TPtr TVoid) = True
 checkCast (TConst (TPtr _)) (TPtr TVoid) = True

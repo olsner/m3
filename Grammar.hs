@@ -24,7 +24,7 @@ singleton x = [x]
 pUnit = Unit <$> many pImport <*> addLocation (pModule <|> pFunction <* eof)
 
 pModule = keyword "module" *> (Decl <$> pName) <* token Semicolon <*> (ModuleDef . concat <$> commit (many pTopLevelDecl))
-pTopLevelDecl :: MParser [LocDecl ExprF]
+pTopLevelDecl :: MParser [LocDecl LocE]
 pTopLevelDecl = singleton <$> addLocation (choice
   [pExternalFunction
   ,pFunction

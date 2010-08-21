@@ -89,13 +89,13 @@ cgMain mainModule = tell $
     mainName = QualifiedName ["main"]
     actualMain = qualifyName mainModule mainName
 
-cgUnit (Unit _ decl@(Decl name _)) = do
+cgUnit (Unit _ decl@(Loc loc (Decl name _))) = do
   tell ("; Start of unit: "++show name++"\n\n")
   cgDecl (QualifiedName []) decl
   tell ("; End of unit: "++show name++"\n\n")
 
-cgDecl name (Decl local def) =
-  cgDef (qualifyName name local) local def
+cgDecl name (Loc loc (Decl local def)) =
+  cgDef loc (qualifyName name local) local def
 
 encodeType :: Type -> String
 encodeType (TPtr (TConst t)) = encodeType (TPtr t)
@@ -112,8 +112,8 @@ encodeType (TStruct fields) = "{"++intercalate "," (map encodeField fields)++"}"
 encodeType TNullPtr = encodeType (TPtr TVoid)
 --encodeType other = error ("encodeType "++show other)
 
-encodeField (_,typ) = encodeType typ
-structFieldOffset (TStruct fields) name | Just ix <- findIndex ((==name).fst) fields = return ix
+encodeField (Loc loc (_,typ)) = encodeType typ
+structFieldOffset (TStruct fields) name | Just ix <- findIndex ((==name).fst.locData) fields = return ix
 structFieldOffset (TPtr t@(TStruct _)) name = structFieldOffset t name
 structFieldOffset typ name = cgError ("structFieldOffset: failed looking up "++show name++" in "++show typ)
 
@@ -125,7 +125,7 @@ encodeFormal True (FormalParam typ (Just name)) = encodeType typ++" %"++encodeNa
 encodeFormal _ (FormalParam typ _) = encodeType typ
 encodeFormal _ VarargParam = "..."
 
-cgDef name local def = case def of
+cgDef loc name local def = case def of
   (ModuleDef decls) -> mapM_ (cgDecl name) decls
   (FunctionDef retT args code) -> runCGM args $ do
     tell "define linker_private "
@@ -154,7 +154,7 @@ cgDef name local def = case def of
   (VarDef _ _) -> error ("Weird VarDef: "++show def)
   (TypeDef _) -> return ()
 
-cgFunBody :: MonadIO m => Statement TypedE -> CGMT m ()
+cgFunBody :: MonadIO m => LocStatement TypedE -> CGMT m ()
 cgFunBody = cgStmt
 
 infixl 1 =%
@@ -181,12 +181,12 @@ intValue i t = mkValue ConstExpr t (show i)
 bitcast value to = "bitcast " ++ valueText value ++ " to " ++ encodeType to
 trunc value to = "trunc " ++ valueText value ++ " to " ++ encodeType to
 
-withVars :: MonadIO m => [(Type,Name,Maybe TypedE)] -> CGMT m a -> CGMT m a
+withVars :: MonadIO m => [VarDecl TypedE] -> CGMT m a -> CGMT m a
 withVars vars m = foldr withVar m vars
-withVar :: MonadIO m => (Type,Name,Maybe TypedE) -> CGMT m a -> CGMT m a
-withVar (TConst _,name,init) m =
+withVar :: MonadIO m => VarDecl TypedE -> CGMT m a -> CGMT m a
+withVar (Loc loc (TConst _,name,init)) m =
   cgTypedE (fromJust init) >>= \initVal -> withLocal name initVal m
-withVar (typ,name,init) m =
+withVar (Loc loc (typ,name,init)) m =
   maybeM cgTypedE init >>= \initVal -> do
     let value = mkValue AllocaPtr (TPtr typ) ("%"++encodeName name)
     withLocal name value $ do
@@ -194,15 +194,15 @@ withVar (typ,name,init) m =
       maybeM (\initVal -> store initVal value) initVal
       m
 
-cgStmt :: Statement TypedE -> CGM ()
-cgStmt stmt = case stmt of
+cgStmt :: LocStatement TypedE -> CGM ()
+cgStmt (Loc loc stmt) = case stmt of
   EmptyStmt -> return ()
   (ReturnStmt e) -> ret =<< cgTypedE e
   (ReturnStmtVoid) -> line "ret void"
   (ExprStmt expr) -> cgTypedE expr >> return ()
   CompoundStmt vars xs -> withVars vars (mapM_ cgStmt xs)
-  (VarDecl _) -> error "Internal error: VarDecl in CodeGen!"
-  (TypDecl _ _) -> error "Internal error: TypDecl in CodeGen!"
+  (VarDecl _) -> cgError "Internal error: VarDecl in CodeGen!"
+  (TypDecl _ _) -> cgError "Internal error: TypDecl in CodeGen!"
   (IfStmt cond t f) -> do
     c <- cgTypedE cond
     tblock <- freshLabel

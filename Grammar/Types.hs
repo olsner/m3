@@ -35,8 +35,8 @@ pTypedef f = choice
   [keyword "type" *> ((,) <$> pName <*> (token Assignment *> pType)) <* token Semicolon
   ] >>= \(name,typ) -> stateAddType name typ >> return (f name typ)
 
-genVarDecl :: (Type -> Name -> b -> a) -> MParser b -> MParser [a]
-genVarDecl f init = mkVarDecl f <$> pType <*> sepBy1 ((,) <$> pName <*> init) (token Comma) <* token Semicolon
-mkVarDecl :: (Type -> Name -> b -> a) -> Type -> [(Name,b)] -> [a]
-mkVarDecl varDecl typ vars = map (uncurry (varDecl typ)) vars
+genVarDecl :: (Type -> Name -> b -> a) -> MParser b -> MParser [Loc a]
+genVarDecl f init = mkVarDecl f <$> pType <*> sepBy1 (addLocation ((,) <$> pName <*> init)) (token Comma) <* token Semicolon
+mkVarDecl :: (Type -> Name -> b -> a) -> Type -> [Loc (Name,b)] -> [Loc a]
+mkVarDecl varDecl typ vars = map (\(Loc l (n,b)) -> Loc l (varDecl typ n b)) vars
 

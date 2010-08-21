@@ -36,8 +36,8 @@ runSC args = runCounterT 0 . flip evalStateT (SCState 0 (S.fromList argNames) (M
     f (FormalParam _ name) = name
     f _ = Nothing
     argsInit = zip argNames (zip (repeat 0) argNames)
-scError = error
-scWarn = traceIO
+scError loc msg = error (show loc++": "++msg)
+scWarn loc msg = traceIO (show loc++": "++msg)
 
 --traceFunM str m x = liftIO (putStrLn (str++": "++show x)) >> m x >>= \x -> liftIO (putStrLn (str++" DONE: "++show x)) >> return x
 --traceM str m = liftIO (putStrLn str) >> m >>= \x -> liftIO (putStr (str++": done\n")) >> return x
@@ -69,17 +69,17 @@ addName name = modify (\s -> s { nameMap = M.insert name (depth s, name) (nameMa
 -- (4?) Correctness check: no VarDecl nodes remain, no CompoundStmt has duplicate names
 
 -- define our own top-down traversal...
-sc :: MonadIO m => Statement ExprF -> SC m (Statement ExprF)
+sc :: MonadIO m => LocStatement ExprF -> SC m (LocStatement ExprF)
 sc =
   preCheck >=>
-  {-traceFunM "convertVarDecl1"-} (return . convertVarDecl1) >=>
+  {-traceFunM "convertVarDecl1"-} convertVarDecl1 >=>
   {-traceFunM "renameShadowed"-} renameShadowed -- >=> postCheck
 
 -- FIXME This should run in its own State (Int,Map Name Int), the state produced
 -- is not interesting for the outer checking step
 --preCheck :: (MonadIO m, Typeable a, Data a, Show a) => a -> SC m a
-preCheck :: MonadIO m => Statement ExprF -> SC m (Statement ExprF)
-preCheck = f -- traceFunM "preCheck" f
+preCheck :: MonadIO m => LocStatement ExprF -> SC m (LocStatement ExprF)
+preCheck (Loc loc stmt) = Loc loc <$> f stmt -- traceFunM "preCheck" f
   where
     f :: MonadIO m => Statement ExprF -> SC m (Statement ExprF)
     f (CompoundStmt [] stmts) = CompoundStmt [] <$> mapM preCheck stmts
@@ -88,14 +88,14 @@ preCheck = f -- traceFunM "preCheck" f
     f stmt@(VarDecl vars) = do
       d <- gets depth
       --traceIO ("VarDecl: "++show stmt)
-      forM_ vars $ \(_typ,name,_init) -> do
+      forM_ vars $ \(Loc loc (_typ,name,_init)) -> do
         existingVar <- gets (M.lookup name . nameMap)
         addName name
         --traceIO ("existingVar "++show name++": "++show existingVar)
         --newVar <- gets (M.lookup name . nameMap)
         --traceIO ("newVar "++show name++": "++show newVar)
         case existingVar of
-          Just (d',_) -> if d == d' then scError "Redeclaration at same depth." else scWarn "WARNING: Declared variable shadows outer variable" >> return ()
+          Just (d',_) -> if d == d' then scError loc "Redeclaration at same depth." else scWarn loc "WARNING: Declared variable shadows outer variable" >> return ()
           Nothing -> return ()
       return stmt
     f x@(ExprStmt _) = return x
@@ -103,37 +103,43 @@ preCheck = f -- traceFunM "preCheck" f
     f EmptyStmt = return EmptyStmt
     -- TODO Should be handled as variable declarations to properly handle shadowing and duplicates.
     f x@(TypDecl _ _) = return x
-    f x = scError ("Unknown statement in scope check: "++show x)
+    f x = scError loc ("Unknown statement in scope check: "++show x)
 
-getVars :: Show e => [Statement e] -> ([(Type,Name,Maybe e)], [Statement e])
-getVars (VarDecl vs:xs) = (vs++ws, ys) where (ws,ys) = getVars xs
+getVars :: Show e => [LocStatement e] -> ([VarDecl e], [LocStatement e])
+getVars (Loc loc (VarDecl vs):xs) = (vs++ws, ys) where (ws,ys) = getVars xs
 getVars xs = ([],xs)
 
-mapCont :: (a -> ([a] -> [a])) -> [a] -> [a]
-mapCont _ [] = []
-mapCont k (x:xs) = k x (mapCont k xs)
+mapCont :: Monad m => (a -> ([a] -> m [a])) -> [a] -> m [a]
+mapCont _ [] = return []
+mapCont k (x:xs) = k x =<< mapCont k xs
 
-convertVarDecl1 :: Statement ExprF -> Statement ExprF
-convertVarDecl1 stmt = case convertVarDecls stmt [] of [x] -> x; _ -> error "convertVarDecl1: One statement became several :("
+convertVarDecl1 :: MonadIO m => LocStatement ExprF -> SC m (LocStatement ExprF)
+convertVarDecl1 stmt@(Loc loc _) = do
+  xs <- convertVarDecls stmt []
+  case xs of
+    [x] -> return x
+    _   -> scError loc "convertVarDecl1: One statement became several :("
 
 -- TODO SYB:ify this - for all "other" statements: keep structure of everything that isn't a Statement, apply convertVarDecl1 to every statement
-convertVarDecls :: Statement ExprF -> ([Statement ExprF] -> [Statement ExprF])
-convertVarDecls stmt = case stmt of
-  (CompoundStmt [] stmts) -> let (vars,tail) = getVars stmts in \k -> CompoundStmt vars (mapCont convertVarDecls tail) : k
-  (VarDecl vars) -> (:[]) . CompoundStmt vars
+convertVarDecls :: MonadIO m => LocStatement ExprF -> ([LocStatement ExprF] -> SC m [LocStatement ExprF])
+convertVarDecls (Loc loc stmt) k = case stmt of
+  (CompoundStmt [] stmts) -> do
+    let (vars,tail) = getVars stmts
+    (:k) . Loc loc . CompoundStmt vars <$> mapCont convertVarDecls tail
+  (VarDecl vars) -> return [Loc loc (CompoundStmt vars k)]
   -- Currently, type declarations don't introduce scoped bindings but are resolved directly at parse time.
-  (TypDecl _ _) -> id
-  (IfStmt c t f) -> (IfStmt c (convertVarDecl1 t) (convertVarDecl1 f):)
-  (WhileStmt c body) -> (WhileStmt c (convertVarDecl1 body):)
-  x -> (:) x
+  (TypDecl _ _) -> return k
+  (IfStmt c t f) -> (:k) . Loc loc <$> (IfStmt c <$> convertVarDecl1 t <*> convertVarDecl1 f)
+  (WhileStmt c body) -> (:k) . Loc loc <$> (WhileStmt c <$> convertVarDecl1 body)
+  x -> return (Loc loc x:k)
 
 
-renameShadowed :: MonadIO m => Statement ExprF -> SC m (Statement ExprF)
-renameShadowed = f -- traceFunM "renameShadowed" f
+renameShadowed :: MonadIO m => LocStatement ExprF -> SC m (LocStatement ExprF)
+renameShadowed (Loc loc stmt) = Loc loc <$> f stmt -- traceFunM "renameShadowed" f
   where
     f :: MonadIO m => Statement ExprF -> SC m (Statement ExprF)
     f (CompoundStmt vars stmts) = inNewScope $ do
-      vars' <- forM vars $ \(typ,name,init) -> do
+      vars' <- forM vars $ \(Loc loc (typ,name,init)) -> do
         traceIO =<< gets (show . used)
         exists <- gets (S.member name . used)
         traceIO (show name++": "++show exists)
@@ -143,16 +149,16 @@ renameShadowed = f -- traceFunM "renameShadowed" f
           Just x -> Just <$> g x
           Nothing -> return Nothing
         -- TODO Make a testcase for shadowed-renaming in initializers
-        return (typ,newName,newInit)
+        return (Loc loc (typ,newName,newInit))
       CompoundStmt vars' <$> mapM renameShadowed stmts
     f (IfStmt cond t f) = IfStmt <$> g cond <*> inNewScope (renameShadowed t) <*> inNewScope (renameShadowed f)
     f (WhileStmt cond body) = WhileStmt <$> g cond <*> inNewScope (renameShadowed body)
-    f (VarDecl _) = scError "VarDecl left over from rewrite step!"
-    f (TypDecl _ _) = scError "TypDecl left over from rewrite step!"
+    f (VarDecl _) = scError loc "VarDecl left over from rewrite step!"
+    f (TypDecl _ _) = scError loc "TypDecl left over from rewrite step!"
     f (ExprStmt e) = ExprStmt <$> g e
     f (ReturnStmt e) = ReturnStmt <$> g e
-    f x@EmptyStmt = return x
-    f x@ReturnStmtVoid = return x
+    f EmptyStmt = return stmt
+    f ReturnStmtVoid = return stmt
     --f x = scError ("Unhandled statement: "++show x)
 
     g = everywhereM (mkM g_)
@@ -162,6 +168,7 @@ renameShadowed = f -- traceFunM "renameShadowed" f
         existingVar <- gets (M.lookup name . nameMap)
         newName <- case existingVar of
           Just (_,name) -> return name
-          Nothing -> scWarn "WARNING: Use of undeclared variable" >> return name
+          -- TODO Add location info to expressions...
+          Nothing -> scWarn dummyLocation "WARNING: Use of undeclared variable" >> return name
         return (InF (EVarRef newName))
       x -> InF <$> g x

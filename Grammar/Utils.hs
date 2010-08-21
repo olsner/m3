@@ -21,6 +21,10 @@ type MParser a = Parser ParserState Token a
 {-# INLINE token #-}
 token t = satisfy (show t) ((== t) . snd)
 lookToken t = satisfyLook (show t) ((== t) . snd)
+lookPosition = (fst <$> look) <|> pure endOfFilePos
+
+addLocation :: MParser a -> MParser (Loc a)
+addLocation p = (\start p end -> Loc (Location start end) p) <$> lookPosition <*> p <*> lookPosition
 
 keyword str = token (Reserved str)
 

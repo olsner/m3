@@ -36,10 +36,10 @@ return a;
 ./test_main.sh
 <<<
 // Test scopechecking: should fail since we have two vardefs in the same scope
-// TODO: Make test check for proper error message
+// TODO: Implement #line so that we don't have to rely on guessing line numbers...
 int a;
 int a;
 return 0;
 >>>2
-m3: Redeclaration at same depth.
+m3: tests/temp_test.m (line 9, column 5..6): Redeclaration at same depth.
 >>>= 1

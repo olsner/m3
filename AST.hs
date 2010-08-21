@@ -23,9 +23,29 @@ qualifyName (QualifiedName xs) (QualifiedName ys) = QualifiedName (xs++ys)
 qualifyName1 (QualifiedName xs) x = QualifiedName (xs++[x])
 encodeName (QualifiedName xs) = intercalate "__" xs
 
+data Location = Location { locStart :: SourcePos, locEnd :: SourcePos } deriving (Eq,Ord,Data,Typeable)
+dummyLocation = Location x x where x = initialPos "<unknown>"
+instance Show Location where
+  show (Location start end) = if sourceName start == sourceName end
+    then sourceName start++" ("++showSameFile++")"
+    else show start++" .. "++show end
+    where
+      showSameFile = if sourceLine start == sourceLine end
+        then showLine start++", "++showSameLine
+        else showLineCol start++" .. "++showLineCol end
+      showSameLine = if sourceColumn start == sourceColumn end
+        then showCol start
+        else showCol start++".."++show (sourceColumn end)
+      showLineCol p = showLine p++", "++showCol p
+      showLine p = "line "++show (sourceLine p)
+      showCol p = "column "++show (sourceColumn p)
+
+data Loc a = Loc Location a deriving (Show,Eq,Ord,Data,Typeable)
+locData (Loc _ x) = x
+
 -- A unit is a set of imports and *one* declaration of the toplevel entity.
 data Unit e =
-  Unit { unitImports :: [Name], unitDecl :: Decl e }
+  Unit { unitImports :: [Name], unitDecl :: LocDecl e }
   deriving (Show,Eq,Data,Typeable)
 importedUnits :: Map Name (Unit e) -> Name -> [Name]
 importedUnits units name = snd $ execRWS (go name) units S.empty
@@ -37,6 +57,9 @@ importedUnits units name = snd $ execRWS (go name) units S.empty
       mapM_ go =<< asks (unitImports . fromJust . M.lookup name)
       tell [name]
 
+type VarDecl e = Loc (Type,Name,Maybe e)
+
+type LocStatement e = Loc (Statement e)
 data Show e => Statement e =
     EmptyStmt
   | ReturnStmt e
@@ -45,14 +68,15 @@ data Show e => Statement e =
   -- Special entry for *parsing* variable declarations - should be transformed
   -- into nested CompoundStmt's after checking for conflicting variables as part of the
   -- scopechecking.
-  | VarDecl [(Type,Name,Maybe e)]
+  | VarDecl [VarDecl e]
   | TypDecl Name Type
-  | CompoundStmt [(Type,Name,Maybe e)] [Statement e]
-  | IfStmt e (Statement e) (Statement e)
-  | WhileStmt e (Statement e)
+  | CompoundStmt [VarDecl e] [LocStatement e]
+  | IfStmt e (LocStatement e) (LocStatement e)
+  | WhileStmt e (LocStatement e)
   deriving (Show,Eq,Data,Typeable)
 
 data Decl e = Decl Name (Def e) deriving (Show,Eq,Data,Typeable)
+type LocDecl e = Loc (Decl e)
 
 data FormalParam =
     FormalParam Type (Maybe Name)
@@ -61,13 +85,14 @@ data FormalParam =
 type FormalParams = [FormalParam]
 
 data Def e =
-    ModuleDef [Decl e]
-  | FunctionDef { funReturnType :: Type, funArgs :: FormalParams, funCode :: Statement e }
+    ModuleDef [LocDecl e]
+  | FunctionDef { funReturnType :: Type, funArgs :: FormalParams, funCode :: LocStatement e }
   | ExternalFunction { funLinkage :: Maybe String, funReturnType :: Type, funArgs :: FormalParams }
   | VarDef Type (Maybe e)
   | TypeDef Type
 
   deriving (Show,Eq,Data,Typeable)
+type LocDef e = Loc (Def e)
 
 data Type =
     TVoid
@@ -80,8 +105,8 @@ data Type =
   | TPtr Type
   | TNullPtr -- pointer of any type...
   | TArray Int Type
-  | TFunction Type [FormalParam]
-  | TStruct [(Name,Type)]
+  | TFunction Type FormalParams
+  | TStruct [Loc (Name,Type)]
   deriving (Show,Eq,Ord,Data,Typeable)
 
 data TypedE = TypedE Type (Expr TypedE) deriving (Show,Eq,Data,Typeable)

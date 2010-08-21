@@ -1,13 +1,21 @@
 {-# LANGUAGE PatternGuards,DeriveDataTypeable #-}
 
-module CppToken where
+module CppToken
+  (Token
+  ,Tok(..)
+  
+  ,oneCharOperators
+  ,multiCharOperators
+  ,postfixOperators
+  ,unaryOperators
+
+  ,reservedWords
+
+  , module SourcePos
+  ) where
 
 import Data.Data (Data,Typeable)
-
-data SourcePos = SourcePos { sourceName :: String, sourceLine :: Int, sourceColumn :: Int } deriving (Ord,Eq,Data,Typeable)
-instance Show SourcePos where
-  show (SourcePos name line column) = name++" (line "++show line++", column "++show column++")"
-initialPos source = SourcePos source 1 1
+import SourcePos
 
 type Token = (SourcePos, Tok)
 data Tok =
@@ -162,14 +170,3 @@ reservedWords =
     ,"void"
     ,"volatile"
     ,"while"]
-
-swap (x,y) = (y,x)
-printCanonically Semicolon = ";\n"
-printCanonically token = (case token of
-    _ | Just c <- lookup token (map swap oneCharOperators) -> [c]
-    _ | Just str <- lookup token (map swap multiCharOperators) -> str
-    Reserved word -> word
-    Identifier ident -> ident
-    StringTok s -> show s
-    IntegerTok i -> show i
-    _ -> "/*"++show token++"*/") ++ " "

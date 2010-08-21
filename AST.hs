@@ -14,6 +14,7 @@ import Data.Set (Set)
 import qualified Data.Set as S
 
 import CppToken (Token)
+import SourcePos
 
 newtype Name = QualifiedName [String] deriving (Show,Eq,Ord,Data,Typeable)
 qualifyName (QualifiedName xs) (QualifiedName ys) = QualifiedName (xs++ys)

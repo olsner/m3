@@ -16,6 +16,8 @@ import qualified Data.Map as M
 
 import Data.Generics hiding (Unit)
 
+import System.IO
+
 import AST
 
 import Counter -- o.o Also implements Applicative for StateT
@@ -41,7 +43,7 @@ scWarn loc msg = traceIO (show loc++": "++msg)
 
 --traceFunM str m x = liftIO (putStrLn (str++": "++show x)) >> m x >>= \x -> liftIO (putStrLn (str++" DONE: "++show x)) >> return x
 --traceM str m = liftIO (putStrLn str) >> m >>= \x -> liftIO (putStr (str++": done\n")) >> return x
-traceIO str = liftIO (putStrLn str)
+traceIO str = liftIO (hPutStrLn stderr str)
 
 inNewScope :: (MonadIO m, Typeable a, Data a) => SC m a -> SC m a
 inNewScope m = do
@@ -140,9 +142,9 @@ renameShadowed (Loc loc stmt) = Loc loc <$> f stmt -- traceFunM "renameShadowed"
     f :: MonadIO m => Statement ExprF -> SC m (Statement ExprF)
     f (CompoundStmt vars stmts) = inNewScope $ do
       vars' <- forM vars $ \(Loc loc (typ,name,init)) -> do
-        traceIO =<< gets (show . used)
+        --traceIO =<< gets (show . used)
         exists <- gets (S.member name . used)
-        traceIO (show name++": "++show exists)
+        --traceIO (show name++": "++show exists)
         newName <- if exists then qualifyName1 name . show <$> lift getAndInc else return name
         mapName name newName
         newInit <- case init of
@@ -169,6 +171,8 @@ renameShadowed (Loc loc stmt) = Loc loc <$> f stmt -- traceFunM "renameShadowed"
         newName <- case existingVar of
           Just (_,name) -> return name
           -- TODO Add location info to expressions...
-          Nothing -> scWarn dummyLocation "WARNING: Use of undeclared variable" >> return name
+          Nothing -> do
+            -- scWarn dummyLocation "WARNING: Use of undeclared variable"
+            return name
         return (InF (EVarRef newName))
       x -> InF <$> g x

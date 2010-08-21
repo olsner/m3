@@ -24,8 +24,12 @@ type Conv = TypedE -> TypedE
 newtype Search c a b = Search { runSearch :: a -> [(b,b -> a -> c)] }
 type ConvF = Search (TypedE -> TypedE) Type Type
 
-traceShow msg x = x `seq` trace (msg++show x) x
-traceFun msg f = traceShow (msg++" OUT: ") . f . traceShow (msg++" IN: ")
+--traceShow msg x = x `seq` trace (msg++show x) x
+--traceFun msg f = traceShow (msg++" OUT: ") . f . traceShow (msg++" IN: ")
+
+traceShow _ x = x
+traceFun _ f = f
+
 concatMapMap f = traceFun "concatMapMap" (M.toList . M.fromList . concat . map f)
 
 --runSearch :: Search c a b -> a -> [(b,b -> a -> c)]

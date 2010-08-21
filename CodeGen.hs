@@ -74,7 +74,7 @@ printLLVM name = do
   output <- execWriterT $ do
     (units, stringMap) <- asks stringfindUnits
     local (const units) $ do
-      _ <- liftIO (printf "Generating code for %s...\n" (show name))
+      -- _ <- liftIO (printf "Generating code for %s...\n" (show name))
       writeStrings stringMap
       mapM_ (cgUnit . fromJust . flip M.lookup units) (importedUnits units name)
       cgMain name
@@ -257,7 +257,7 @@ cgExpr typ e = case e of
           (TPtr (TArray _ arrelem)) -> (arrT, arrelem)
           typ -> error ("EArrToPtr on something not array or ptr-to-array: "++show typ++" in "++show e)
     v <- cgExpr arrT' arr
-    lift (liftIO (printf "EArrToPtr: %s -> %s\n" (show e) (show typ)))
+    -- lift (liftIO (printf "EArrToPtr: %s -> %s\n" (show e) (show typ)))
     case valueKind v of
       ConstExpr -> return (mkValue ConstExpr (TPtr arrelem) ("getelementptr ("++valueText v++", i1 0, i1 0)"))
       _ -> withFresh (TPtr arrelem) (=% getelementptr v [zero, zero])

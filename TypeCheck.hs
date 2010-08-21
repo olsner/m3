@@ -91,7 +91,8 @@ withArg _ m = m
 tcUnitByName :: MonadIO m => Name -> TC m (Unit TypedE)
 tcUnitByName name = do
   res <- getModule name -- errors if module not found - it must be found
-  _ <- liftIO (printf "tcUnitByName: %s: %s\n" (show name) (either (const "not yet typechecked") (const "already typechecked") res))
+  -- TODO debugging-printing
+  -- _ <- liftIO (printf "tcUnitByName: %s: %s\n" (show name) (either (const "not yet typechecked") (const "already typechecked") res))
   case res of
     Left untyped -> tcUnit name untyped
     Right typed -> return typed
@@ -166,10 +167,10 @@ tcStmt ret args (Loc loc stmt) = traceM ("tcStmt "++show stmt) $ Loc loc <$> cas
   WhileStmt cond body -> WhileStmt <$> tcExprAsType TBool cond <*> tcStmt ret args body
   other -> tcError loc ("Unknown statement "++show other)
 
-traceShowRes str x = trace str $ trace (str++show x) x
+-- traceShowRes str x = trace str $ trace (str++show x) x
 
 implicitlyConvertType to orig@(TypedE from _) =
-  traceShowRes ("implicitlyConvertType "++show orig++" to "++show to++", from "++show from++": ") $
+  -- traceShowRes ("implicitlyConvertType "++show orig++" to "++show to++", from "++show from++": ") $
   case implicitConversions to from of
     Just fun -> Just (fun orig)
     Nothing -> Nothing
@@ -228,7 +229,8 @@ tcExpr e = case outF e of
     return (TypedE elemType (EArrayIndex arr' ix'))
   (EFieldAccess field el) -> do
     (TypedE typ exp) <- tcExpr el
-    trace ("EFieldAccess: "++show typ++" "++show exp++", "++show field) $ return ()
+    -- TODO Debugging/tracing output control
+    -- trace ("EFieldAccess: "++show typ++" "++show exp++", "++show field) $ return ()
     ft <- case typ of
           TStruct fields -> case lookup field (map locData fields) of
             Just ft -> return ft

@@ -9,6 +9,7 @@ import System.Directory
 import System.FilePath
 import System.Environment
 import System.Exit
+import System.IO
 
 import Text.Printf
 
@@ -30,12 +31,13 @@ parse path = do
       case runParser pUnit initialParserState tokens of
         (Right (res,_),_) -> return res
         (res,rest) -> do
-          putStrLn "*** Parse left residue (only 10 tokens shown):"
-          mapM_ print (take 10 rest)
+          -- TODO Flags for debug output...
+          --putStrLn "*** Parse left residue (only 10 tokens shown):"
+          --mapM_ print (take 10 rest)
           --putStrLn "*** Full token stream:"
           --mapM_ print (map snd tokens)
           let msg = case res of Left err -> err; _ -> show res
-          putStrLn ("Parse error "++msg)
+          hPutStrLn stderr ("Parse error "++msg)
           exitFailure
 
 firstM :: Monad m => (a -> m (Maybe b)) -> [a] -> m (Maybe b)
@@ -48,7 +50,7 @@ nameToPath (QualifiedName components) = joinPath components
 
 tryImportModule name path = do
   let modPath = addExtension (path </> nameToPath name) ".m"
-  printf "tryImportModule: %s: Trying %s\n" (show name) modPath
+  --printf "tryImportModule: %s: Trying %s\n" (show name) modPath
   e <- doesFileExist modPath
   if e then Just <$> parse modPath else return Nothing
 
@@ -94,5 +96,5 @@ process :: Name -> ModMap -> IO ()
 process name mods'' = do
   mods' <- mapMapM scopecheck mods''
   mods <- runReaderT (typecheck name) mods'
-  mapM_ print (M.toList mods)
+  --mapM_ print (M.toList mods)
   runReaderT (printLLVM name) mods

@@ -2,4 +2,7 @@
 <<<
 return 0}
 return 2;
+>>>
+>>>2
+Parse error Parser.satisfyLookState: expected Semicolon but found (tests/temp_test.m (line 6, column 9),CloseBrace)
 >>>= 1

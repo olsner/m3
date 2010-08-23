@@ -33,8 +33,6 @@ Executable m3
     parsec < 3,
     mtl,
     containers,
-    -- Only for FixF - that's exactly one newtype we need...
-    category-extras,
     directory, filepath,
     syb
   

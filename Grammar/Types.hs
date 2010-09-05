@@ -10,6 +10,7 @@ import CppToken
 import Grammar.Parser
 import Grammar.Utils
 
+typeIdentifier :: MParser Type
 typeIdentifier = satisfyLookState "type identifier" f <* next
   where
     -- TODO should use a parser-for-names instead.

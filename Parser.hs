@@ -5,6 +5,7 @@ module Parser
   runParser,
   next,
   look,
+  lookPosition,
   satisfy,
   satisfyLook,
   satisfyLookState,
@@ -30,6 +31,7 @@ module Parser
 
 import Control.Applicative
 import Parser.Internal
+import SourcePos
 
 infixl 4 <*!>, *!>, <*!
 
@@ -45,16 +47,19 @@ p <*!  q = p <* commit q
 -- | Check the next token and current state against a predicate, return the
 -- token if the predicate returns True, fail the parse otherwise. Also fails if
 -- end of stream is reached and does *not* consume the token.
-satisfyLookState :: Show t => String -> (s -> t -> Parser s t a) -> Parser s t a
-satisfyLookState msg p = (look <|> failParse ("Parser.satisfyLookState: expected "++msg++" instead of EOF")) >>= \t -> getState >>= \s -> (p s t <|> failParse ("Parser.satisfyLookState: expected "++msg++" but found "++show t))
+satisfyLookState :: Show t => String -> (s -> (Pos,t) -> Parser s t a) -> Parser s t a
+satisfyLookState msg p = do
+  t <- look <|> failParse ("Parser.satisfyLookState: expected "++msg++" instead of EOF")
+  s <- getState
+  p s t <|> failParse ("Parser.satisfyLookState: expected "++msg++" but found "++show t)
 
 {-# INLINE satisfyLook #-}
 -- | Like satisfyLookState but the predicate does not look at the state.
-satisfyLook :: Show t => String -> (t -> Bool) -> Parser s t t
+satisfyLook :: Show t => String -> ((Pos,t) -> Bool) -> Parser s t (Pos,t)
 satisfyLook msg p = satisfyLookState msg (\_ t -> if p t then pure t else empty)
 {-# INLINE satisfy #-}
 -- | Like satisfyLook but also consumes the token.
-satisfy :: Show t => String -> (t -> Bool) -> Parser s t t
+satisfy :: Show t => String -> ((Pos,t) -> Bool) -> Parser s t (Pos,t)
 satisfy msg p = satisfyLook msg p <* next
 
 -- | Combine a head-parser and a tail-parser into a list parser. Equivalent to
@@ -82,8 +87,8 @@ sepBy :: Parser s t a -> Parser s t b -> Parser s t [a]
 sepBy p s = sepBy1 p s <|> pure []
 
 -- | Match a list of tokens exactly using '(==)'.
-match :: Eq t => Show t => [t] -> Parser s t [t]
-match (x:xs) = list (satisfy (show x) (== x)) (match xs)
+match :: Eq t => Show t => [t] -> Parser s t [(Pos,t)]
+match (x:xs) = list (satisfy (show x) ((== x) . snd)) (match xs)
 match [] = pure []
 
 {-# INLINE choice #-}

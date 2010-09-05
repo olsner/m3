@@ -9,6 +9,7 @@ module Parser.Internal
 
   ,next
   ,look
+  ,lookPosition
   ,eof
 
   ,getState
@@ -18,6 +19,7 @@ module Parser.Internal
   ) where
 
 import Control.Applicative
+import SourcePos
 
 -- The three continuations: error (hard), retry (backtracking error), success.
 
@@ -28,19 +30,21 @@ import Control.Applicative
 -- /applicative/monad) of the computation along with the updated state and
 -- rest-of-stream values.
 
-type Error t r = [t] -> String -> r
+type Stream t = [(Pos,t)]
+
+type Error t r = Stream t -> String -> r
 type Retry t r = Error t r
-type Success s t a r = a -> s -> [t] -> r
+type Success s t a r = a -> s -> Stream t -> r
 
 -- | The main parser type. This takes three arguments: the state, the token
 -- type and the result type.
-newtype Parser s t a = P (forall r . s -> [t] -> Success s t a r -> Retry t r -> Error t r -> r)
+newtype Parser s t a = P (forall r . s -> Stream t -> Success s t a r -> Retry t r -> Error t r -> r)
 
 -- | Run a parser. Takes a state and a list of tokens and returns the remaining
 -- tokens along with either an error message or a tuple of state and value
 -- result.
 {-# INLINE runParser #-}
-runParser :: Parser s t a -> s -> [t] -> (Either String (a,s), [t])
+runParser :: Parser s t a -> s -> Stream t -> (Either String (a,s), Stream t)
 runParser (P p) s ts = p s ts suc err err
   where
     {-# INLINE suc #-}
@@ -93,20 +97,22 @@ commit (P p) = P $ \s ts suc _ err -> p s ts suc err err
 failParse :: String -> Parser s t a
 failParse msg = P $ \_ ts _ retr _ -> retr ts msg
 
-nextLook :: String -> ([t] -> [t]) -> Parser s t t
+nextLook :: String -> (Stream t -> Stream t) -> Parser s t (Pos,t)
 nextLook msg f = P $ \s ts suc retr _ -> case ts of
   [] -> retr ts (msg++": EOF")
   (t:_) -> suc t s (f ts)
 
 {-# INLINE next #-}
 -- | Return and consume the next token. Fail the parse if at end of stream.
-next :: Parser s t t
+next :: Parser s t (Pos,t)
 next = nextLook "next" tail
 
 -- | Return the next token but do not consume it. Fail the parse if at end of
 -- stream.
-look :: Parser s t t
+look :: Parser s t (Pos,t)
 look = nextLook "look" id
+
+lookPosition = (fst <$> look) <|> pure endOfFilePos
 
 {-# INLINE eof #-}
 -- | Match only if at end of stream.

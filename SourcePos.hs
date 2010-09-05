@@ -11,3 +11,5 @@ instance Show SourcePos where
 initialPos source = SourcePos source 1 1
 endOfFilePos = SourcePos "eof" 0 0
 
+type Pos = SourcePos
+

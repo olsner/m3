@@ -19,8 +19,8 @@ infixl 3 $>
 type MParser a = Parser ParserState Tok a
 
 {-# INLINE token #-}
-token t = satisfy (show t) ((== t) . snd)
-lookToken t = satisfyLook (show t) ((== t) . snd)
+token t = satisfy (show t) (== t)
+lookToken t = satisfyLook (show t) (== t)
 
 addLocation :: MParser a -> MParser (Loc a)
 addLocation p = (\start p end -> Loc (Location start end) p) <$> lookPosition <*> p <*> lookPosition
@@ -28,7 +28,7 @@ addLocation p = (\start p end -> Loc (Location start end) p) <$> lookPosition <*
 keyword str = token (Reserved str)
 
 {-# INLINE parseJust #-}
-parseJust msg f = second (fromJust . f) <$> satisfy msg (isJust . f . snd)
+parseJust msg f = second (fromJust . f) <$> satisfy msg (isJust . f)
 
 identifier = parseJust "Identifier" fromIdentifier
 integer = second fromIntegral <$> parseJust "integer" fromIntegerTok

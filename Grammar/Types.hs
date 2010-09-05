@@ -10,11 +10,11 @@ import CppToken
 import Grammar.Parser
 import Grammar.Utils
 
-typeIdentifier :: MParser Type
+typeIdentifier :: MParser (Pos,Type)
 typeIdentifier = satisfyLookState "type identifier" f <* next
   where
     -- TODO should use a parser-for-names instead.
-    f s (_pos,Identifier id) = maybe empty pure (lookupTypeIdentifier s (QualifiedName [id]))
+    f s (Identifier id) = maybe empty pure (lookupTypeIdentifier s (QualifiedName [id]))
     f _ _ = empty
 
 pStructField = genVarDecl (\typ name () -> (name, typ)) (pure ())
@@ -28,7 +28,8 @@ pLeftType = choice
   ,keyword "const" *> (TConst <$> pType)
   ,keyword "struct" *> (TStruct <$> inBraces (concat <$> many pStructField))
   ,inBrackets (TPtr <$> commit pType)
-  ,typeIdentifier
+  -- FIXME snd <$> due to not tracking positions of types directly
+  ,snd <$> typeIdentifier
   ] <|> failParse "Out of luck in pLeftType"
 pArraySuffix = maybe id TArray <$> optional (snd <$> inBrackets integer)
 

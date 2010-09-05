@@ -9,8 +9,6 @@ module Grammar
 
 import Control.Applicative
 
-import Data.Maybe
-
 import AST
 import CppToken
 

@@ -111,6 +111,7 @@ data Type =
 
 data Expr e =
     EFunCall e [e]
+  -- TODO Use Tok instead of Token - expressions have associated location info anyway.
   | EBinary Token e e
   | EUnary Token e
   | EPostfix Token e
@@ -132,6 +133,6 @@ data Expr e =
   | ENullPtr
   deriving (Show,Eq,Data,Typeable)
 
-data TypedE = TypedE Type (Expr TypedE) deriving (Show,Eq,Data,Typeable)
+data TypedE = TypedE Location Type (Expr TypedE) deriving (Show,Eq,Data,Typeable)
 data LocE = LocE Location (Expr LocE) deriving (Show,Eq,Data,Typeable)
 

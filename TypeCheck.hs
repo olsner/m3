@@ -169,7 +169,7 @@ tcStmt ret args (Loc loc stmt) = traceM ("tcStmt "++show stmt) $ Loc loc <$> cas
 
 -- traceShowRes str x = trace str $ trace (str++show x) x
 
-implicitlyConvertType to orig@(TypedE from _) =
+implicitlyConvertType to orig@(TypedE loc from _) =
   -- traceShowRes ("implicitlyConvertType "++show orig++" to "++show to++", from "++show from++": ") $
   case implicitConversions to from of
     Just fun -> Just (fun orig)
@@ -177,7 +177,7 @@ implicitlyConvertType to orig@(TypedE from _) =
 
 tcExprAsType :: MonadIO m => Type -> LocE -> TC m TypedE
 tcExprAsType expT e@(LocE loc _) = do
-  typed@(TypedE t _) <- tcExpr e
+  typed@(TypedE _ t _) <- tcExpr e
   case implicitlyConvertType expT typed of
     Just typed' -> return typed'
     Nothing -> tcError loc ("Expression "++show typed++" not of expected type "++show expT++" but "++show t++", and no implicit conversions were available")
@@ -191,44 +191,44 @@ tcParams formal                 actual = tcError dummyLocation ("Argument number
 
 tcExpr :: MonadIO m => LocE -> TC m TypedE
 tcExpr (LocE loc e) = case e of
-  (EBool b) -> return (TypedE TBool (EBool b))
-  (EInt i) -> return (TypedE TInt (EInt i))
-  (EString str) -> return (TypedE (TPtr (TConst TChar)) (EString str))
-  (EChar c) -> return (TypedE TChar (EChar c))
+  (EBool b) -> return (typedE TBool (EBool b))
+  (EInt i) -> return (typedE TInt (EInt i))
+  (EString str) -> return (typedE (TPtr (TConst TChar)) (EString str))
+  (EChar c) -> return (typedE TChar (EChar c))
   (EVarRef name) -> do
     (varName,Var qual typ) <- getBinding loc name
-    return $ TypedE typ $ case qual of
+    return $ typedE typ $ case qual of
       Const -> EVarRef varName
-      _     -> EDeref $ TypedE (TPtr typ) $ EVarRef varName
+      _     -> EDeref $ typedE (TPtr typ) $ EVarRef varName
   (EFunCall fun args) -> do
-    (TypedE typ fune) <- tcExpr fun
-    fun_ <- TypedE (TPtr typ) <$> case fune of
-                (EDeref (TypedE _ funptr)) -> return funptr
+    (TypedE _ typ fune) <- tcExpr fun
+    fun_ <- typedE (TPtr typ) <$> case fune of
+                (EDeref (TypedE _ _ funptr)) -> return funptr
                 _ -> tcError loc ("Function call on non-lvalue "++show fune)
     case typ of
       (TFunction retT params) -> do
         args_ <- tcParams params args
-        return (TypedE retT (EFunCall fun_ args_))
+        return (typedE retT (EFunCall fun_ args_))
       other -> tcError loc ("Function call on "++show other++" of non-function type "++show typ)
   (EAssignment op lval rval) -> do
-    lv@(TypedE lvT (EDeref _)) <- tcExpr lval
+    lv@(TypedE _ lvT (EDeref _)) <- tcExpr lval
     rv <- tcExprAsType lvT rval
-    return (TypedE lvT (EAssignment op lv rv))
+    return (typedE lvT (EAssignment op lv rv))
   (EBinary op x y) -> do
-    tx@(TypedE t _) <- tcExpr x
+    tx@(TypedE _ t _) <- tcExpr x
     (res,op2type) <- binopTypeRule (snd op) loc t
     ty <- tcExprAsType op2type y
-    return (TypedE res (EBinary op tx ty))
+    return (typedE res (EBinary op tx ty))
   (EArrayIndex arr ix) -> do
-    arr'@(TypedE arrT _) <- tcExpr arr
+    arr'@(TypedE _ arrT _) <- tcExpr arr
     ix' <- tcExprAsType TInt ix
     elemType <- case arrT of
           TPtr x -> return x
           TArray _ elem -> return elem
           _ -> tcError loc ("Indexing performed on non-indexable type "++show arrT)
-    return (TypedE elemType (EArrayIndex arr' ix'))
+    return (typedE elemType (EArrayIndex arr' ix'))
   (EFieldAccess field el) -> do
-    (TypedE typ exp) <- tcExpr el
+    (TypedE structLoc typ exp) <- tcExpr el
     -- TODO Debugging/tracing output control
     -- trace ("EFieldAccess: "++show typ++" "++show exp++", "++show field) $ return ()
     ft <- case typ of
@@ -237,27 +237,29 @@ tcExpr (LocE loc e) = case e of
             Nothing -> tcError loc ("Field "++show field++" not found in struct "++show typ)
           _ -> tcError loc ("Accessing field "++show field++" in non-struct type "++show typ)
     case exp of
-      EDeref struct -> return (TypedE ft (EDeref (TypedE (TPtr ft) (EFieldAccess field struct))))
-      struct -> return (TypedE ft (EFieldAccess field (TypedE typ struct)))
+      EDeref struct -> return (typedE ft (EDeref (typedE (TPtr ft) (EFieldAccess field struct))))
+      struct -> return (typedE ft (EFieldAccess field (TypedE structLoc typ struct)))
   (EPostfix op e) -> do
     -- must be an lvalue
-    e@(TypedE typ ptrExpr) <- tcExpr e
+    e@(TypedE _ typ ptrExpr) <- tcExpr e
     case ptrExpr of
       (EDeref _) -> return ()
       _ -> tcError loc ("Invalid postfix operator on non-lvalue "++show e)
-    return (TypedE typ (EPostfix op e))
+    return (typedE typ (EPostfix op e))
   (EDeref ptr) -> do
-    e@(TypedE (TPtr typ) _) <- tcExpr ptr
-    return (TypedE typ (EDeref e))
+    e@(TypedE _ (TPtr typ) _) <- tcExpr ptr
+    return (typedE typ (EDeref e))
   (EUnary op e) -> do
-    te@(TypedE res _) <- tcUnary (snd op) loc e
-    return (TypedE res (EUnary op te))
-  ENullPtr -> return (TypedE TNullPtr ENullPtr)
+    te@(TypedE _ res _) <- tcUnary (snd op) loc e
+    return (typedE res (EUnary op te))
+  ENullPtr -> return (typedE TNullPtr ENullPtr)
   ECast to e -> do
-    typed@(TypedE typ _) <- tcExpr e
+    typed@(TypedE _ typ _) <- tcExpr e
     when (not (checkCast to typ)) $ tcError loc ("Invalid cast from "++show typ++" to "++show to)
-    return (TypedE to (ECast to typed))
+    return (typedE to (ECast to typed))
   other -> tcError loc ("tcExpr: Unknown expression "++show other)
+  where
+    typedE = TypedE loc
 
 checkCast (TPtr _) (TPtr TVoid) = True
 checkCast (TConst (TPtr _)) (TPtr TVoid) = True

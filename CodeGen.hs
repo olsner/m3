@@ -27,14 +27,14 @@ import CppToken
 import SetWriter
 import TypeCheck (maybeM)
 
-data ValueKind = Variable | ConstExpr | AllocaPtr
-data Value = Value { valueKind :: ValueKind, valueType :: Type, valueTextNoType :: String }
+data ValueKind = Variable | ConstExpr | AllocaPtr deriving Show
+data Value = Value { valueKind :: ValueKind, valueType :: Type, valueTextNoType :: String } deriving Show
 type Locals = Map String Value
 type CGMT m = CounterT Int (StateT Locals (WriterT String m))
 type CGM a = forall m . (MonadIO m) => CGMT m a
 
-cgError :: String -> CGM a
-cgError = error
+cgError :: Location -> String -> m a
+cgError loc msg = error ("[CG] "++show loc++": "++msg)
 
 fresh :: CGM String
 fresh = printf "%%t%d" <$> getAndInc
@@ -89,7 +89,7 @@ cgMain mainModule = tell $
     mainName = QualifiedName ["main"]
     actualMain = qualifyName mainModule mainName
 
-cgUnit (Unit _ decl@(Loc loc (Decl name _))) = do
+cgUnit (Unit _ decl@(Loc _ (Decl name _))) = do
   tell ("; Start of unit: "++show name++"\n\n")
   cgDecl (QualifiedName []) decl
   tell ("; End of unit: "++show name++"\n\n")
@@ -112,10 +112,10 @@ encodeType (TStruct fields) = "{"++intercalate "," (map encodeField fields)++"}"
 encodeType TNullPtr = encodeType (TPtr TVoid)
 --encodeType other = error ("encodeType "++show other)
 
-encodeField (Loc loc (_,typ)) = encodeType typ
-structFieldOffset (TStruct fields) name | Just ix <- findIndex ((==name).fst.locData) fields = return ix
-structFieldOffset (TPtr t@(TStruct _)) name = structFieldOffset t name
-structFieldOffset typ name = cgError ("structFieldOffset: failed looking up "++show name++" in "++show typ)
+encodeField (Loc _ (_,typ)) = encodeType typ
+structFieldOffset _ (TStruct fields) name | Just ix <- findIndex ((==name).fst.locData) fields = return ix
+structFieldOffset loc (TPtr t@(TStruct _)) name = structFieldOffset loc t name
+structFieldOffset loc typ name = cgError loc ("structFieldOffset: failed looking up "++show name++" in "++show typ)
 
 -- | Encode a formal parameter as a LLVM type (e.g. "i32") or type + name (as "i32 %param")
 encodeFormal :: Bool        -- ^ Include variable name for parameter lists?
@@ -151,13 +151,14 @@ cgDef loc name local def = case def of
     tell ("@"++encodeName name++" = linker_private constant "++initVal++"\n")
   (VarDef t Nothing) -> do
     tell ("@"++encodeName name++" = global linker_private "++encodeType t++" undef\n")
-  (VarDef _ _) -> error ("Weird VarDef: "++show def)
+  (VarDef _ _) -> cgError loc ("Weird VarDef: "++show def)
   (TypeDef _) -> return ()
 
 cgFunBody :: MonadIO m => LocStatement TypedE -> CGMT m ()
 cgFunBody = cgStmt
 
 infixl 1 =%
+locComment msg loc = line ("; "++msg++" @ "++show loc)
 line str = tell ('\t':str++"\n")
 value =% expr = line (valueTextNoType value++" = "++expr)
 alloca typ = "alloca "++encodeType typ
@@ -184,12 +185,13 @@ trunc value to = "trunc " ++ valueText value ++ " to " ++ encodeType to
 withVars :: MonadIO m => [VarDecl TypedE] -> CGMT m a -> CGMT m a
 withVars vars m = foldr withVar m vars
 withVar :: MonadIO m => VarDecl TypedE -> CGMT m a -> CGMT m a
-withVar (Loc loc (TConst _,name,init)) m =
+withVar (Loc _ (TConst _,name,init)) m =
   cgTypedE (fromJust init) >>= \initVal -> withLocal name initVal m
 withVar (Loc loc (typ,name,init)) m =
   maybeM cgTypedE init >>= \initVal -> do
     let value = mkValue AllocaPtr (TPtr typ) ("%"++encodeName name)
     withLocal name value $ do
+      locComment ("Variable "++show name) loc
       value =% alloca typ
       maybeM (\initVal -> store initVal value) initVal
       m
@@ -197,35 +199,45 @@ withVar (Loc loc (typ,name,init)) m =
 cgStmt :: LocStatement TypedE -> CGM ()
 cgStmt (Loc loc stmt) = case stmt of
   EmptyStmt -> return ()
-  (ReturnStmt e) -> ret =<< cgTypedE e
+  (ReturnStmt e) -> do
+    v <- cgTypedE e
+    locComment "ReturnStmt" loc
+    ret v
   (ReturnStmtVoid) -> line "ret void"
   (ExprStmt expr) -> cgTypedE expr >> return ()
   CompoundStmt vars xs -> withVars vars (mapM_ cgStmt xs)
-  (VarDecl _) -> cgError "Internal error: VarDecl in CodeGen!"
-  (TypDecl _ _) -> cgError "Internal error: TypDecl in CodeGen!"
+  (VarDecl _) -> cgError loc "Internal error: VarDecl in CodeGen!"
+  (TypDecl _ _) -> cgError loc "Internal error: TypDecl in CodeGen!"
   (IfStmt cond t f) -> do
+    locComment "IfStmt cond" loc
     c <- cgTypedE cond
     tblock <- freshLabel
     fblock <- freshLabel
     end <- freshLabel
     brIf c tblock fblock
+    locComment "IfStmt true" loc
     label tblock $ do
       cgStmt t
       br end
+    locComment "IfStmt false" loc
     label fblock $ do
       cgStmt f
       br end
+    locComment "IfStmt end" loc
     label end (return ())
   (WhileStmt cond body) -> do
     startCond <- freshLabel
     start <- freshLabel
     end <- freshLabel
     br startCond
+    locComment "WhileStmt cond" loc
     label startCond $ do
       c <- cgTypedE cond
       brIf c start end
     label start $ do
+      locComment "WhileStmt body" loc
       cgStmt body
+      locComment "WhileStmt end" loc
       br startCond
     label end (return ())
   --other -> tell ("; UNIMPL!!! "++show other++"\n")
@@ -233,14 +245,15 @@ cgStmt (Loc loc stmt) = case stmt of
 withFresh typ m = fresh >>= \r -> let v = mkValue Variable typ r in v <$ m v
 
 cgTypedE :: TypedE -> CGM Value
-cgTypedE (TypedE t e) = cgExpr t e
-cgExpr :: Type -> Expr TypedE -> CGM Value
-cgExpr typ e = case e of
+cgTypedE (TypedE l t e) = cgExpr l t e
+cgExpr :: Location -> Type -> Expr TypedE -> CGM Value
+cgExpr loc typ e = case e of
   (EBool b) -> return (mkValue ConstExpr typ (if b then "1" else "0"))
   (EInt i) -> return (mkValue ConstExpr typ (show i))
   (EChar i) -> return (mkValue ConstExpr typ (show (ord i)))
-  (EFunCall fun@(TypedE funType _) args) -> do
+  (EFunCall fun@(TypedE _ funType _) args) -> do
     (fun_:args_) <- mapM cgTypedE (fun:args)
+    printloc "EFunCall"
     let funcall = call fun_ args_
     let TPtr (TFunction retT _) = funType
     if retT == TVoid
@@ -251,54 +264,65 @@ cgExpr typ e = case e of
     case local of
       (Just val) -> return val
       _ -> return (mkValue ConstExpr typ ('@':encodeName name))
-  (EArrToPtr (TypedE arrT arr)) -> do
+  (EArrToPtr (TypedE arrLoc arrT arr)) -> do
     (arrT',arrelem) <- case arrT of
           (TArray _ arrelem) -> return (TPtr arrT, arrelem)
           (TPtr (TArray _ arrelem)) -> return (arrT, arrelem)
-          typ -> cgError ("EArrToPtr on something not array or ptr-to-array: "++show typ++" in "++show e)
-    v <- cgExpr arrT' arr
+          typ -> cgError loc ("EArrToPtr on something not array or ptr-to-array: "++show typ++" in "++show e)
+    v <- cgExpr arrLoc arrT' arr
     -- lift (liftIO (printf "EArrToPtr: %s -> %s\n" (show e) (show typ)))
     case valueKind v of
       ConstExpr -> return (mkValue ConstExpr (TPtr arrelem) ("getelementptr ("++valueText v++", i1 0, i1 0)"))
-      _ -> withFresh (TPtr arrelem) (=% getelementptr v [zero, zero])
+      _ -> printloc "EArrToPtr" >> withFresh (TPtr arrelem) (=% getelementptr v [zero, zero])
   (EDeref loc) -> do
     loc' <- cgTypedE loc
+    printloc "EDeref"
     withFresh typ (=% load loc')
   (EAssignment (_,assignOp) lval rval) -> do
-    let (TypedE typ (EDeref loc)) = lval
-    lv <- cgTypedE loc
+    let (TypedE _ typ (EDeref target)) = lval
+    lv <- cgTypedE target
     lval <- withFresh typ (=% load lv)
     rv <- cgTypedE rval
-    res <- cgAssignOp assignOp rv lval
+    printloc "EAssignment"
+    res <- cgAssignOp loc assignOp rv lval
     store res lv
   (EBinary op x y) -> do
     xres <- cgTypedE x
     yres <- cgTypedE y
-    getBinopCode (snd op) (fst op) typ xres yres
-  (EArrayIndex arr@(TypedE (TPtr elem) _) ix) -> do
+    printloc ("EBinary "++show (snd op))
+    getBinopCode (snd op) loc typ xres yres
+  (EArrayIndex arr@(TypedE _ (TPtr elem) _) ix) -> do
     arr' <- cgTypedE arr
     ix' <- cgTypedE ix
+    printloc "EArrayIndex"
     elptr <- withFresh (TPtr elem) (=% getelementptr arr' [ix'])
     withFresh elem (=% load elptr)
-  (EFieldAccess name struct@(TypedE structT _)) -> do
+  (EFieldAccess name struct@(TypedE _ structT _)) -> do
     v <- cgTypedE struct
-    ix <- structFieldOffset structT name
+    ix <- structFieldOffset loc structT name
+    printloc "EFieldAccess"
     case typ of
       TPtr _ -> withFresh typ (=% getelementptr v [zero, intValue ix TInt])
       _ -> withFresh typ (=% extractvalue v ix)
-  (EPostfix op lval) -> do
-    let (TypedE _ (EDeref loc)) = lval
-    lv <- cgTypedE loc
+  (EPostfix (_,op) (TypedE _ _ (EDeref lvExpr))) -> do
+    printloc ("EPostfix "++show op)
+    lv <- cgTypedE lvExpr
     val <- withFresh typ (=% load lv)
-    res <- cgPostfixOp op typ val
+    res <- cgPostfixOp loc op typ val
     store res lv
     return val
-  (EUnary op val) -> cgUnary typ op =<< cgTypedE val
-  (ECast to expr@(TypedE from _)) -> do
+  (EUnary op val) -> do
+    v <- cgTypedE val
+    printloc ("EUnary "++show (snd op))
+    cgUnary typ loc (snd op) v
+  (ECast to expr@(TypedE _ from _)) -> do
     lv <- cgTypedE expr
+    printloc ("ECast "++show from++" to "++show to)
     cgCast to from lv
   ENullPtr -> return (mkValue ConstExpr TNullPtr "null")
-  other -> error ("cgExpr: Unimplemented expression: "++show other)
+  other -> cgError loc ("Unimplemented expression: "++show other)
+  where
+    printloc msg = locComment msg loc
 
 icmp op typ x y = withFresh typ (=% unwords ["icmp",op,valueText x++",",valueTextNoType y])
 cmpBinop tok op pos typ = case typ of 
@@ -307,7 +331,7 @@ cmpBinop tok op pos typ = case typ of
   TChar -> icmp op typ
   --TFloat -> fcmp op
   _ -> error (show pos++": "++show tok++" operator only supports ints, attempted on "++show typ)
-arithBinop tok op pos typ = case typ of
+arithBinop tok op loc typ = case typ of
   TInt -> f op
   TChar -> f op
   (TPtr _) -> \x y -> case op of
@@ -315,8 +339,8 @@ arithBinop tok op pos typ = case typ of
     "sub" -> do
       incr <- withFresh TInt (=% "sub "++encodeType (valueType y)++" 0,"++valueTextNoType y)
       withFresh typ (=% getelementptr x [incr])
-    _ -> cgError ("Unimplemented operator on pointers: "++op)
-  _ -> error (show pos++": "++show tok++" operator only supports ints, attempted on "++show typ)
+    _ -> cgError loc ("Unimplemented operator on pointers: "++op)
+  _ -> \_ _ -> cgError loc (show tok++" operator only supports ints, attempted on "++show typ)
   where
       f op x y = withFresh typ (=% unwords [op,valueText x,",",valueTextNoType y])
 getBinopCode t = case t of
@@ -328,16 +352,19 @@ getBinopCode t = case t of
   Minus -> arithBinop t "sub"
   _ -> error ("getBinopCode: "++show t)
 
-cgAssignOp Assignment = \rv _lv -> return rv
-cgAssignOp PlusAssign = \rv lv -> withFresh (valueType lv) $ (=% "add "++valueText lv++","++valueTextNoType rv)
-cgAssignOp op = \_ _ -> cgError ("Unknown/unimplemented assignment-operator: "++show op)
+cgAssignOp _ Assignment = \rv _lv -> return rv
+cgAssignOp _ PlusAssign = \rv lv -> withFresh (valueType lv) $ (=% "add "++valueText lv++","++valueTextNoType rv)
+cgAssignOp loc op = \_ _ -> cgError loc ("Unknown/unimplemented assignment-operator: "++show op)
 
-cgPostfixOp (_,Decrement) typ@(TPtr _) val = withFresh typ $ (=% getelementptr val [minusOne])
-cgPostfixOp (_,Increment) typ@(TPtr _) val = withFresh typ $ (=% getelementptr val [one])
-cgPostfixOp (_,Decrement) typ val = withFresh typ $ (=% "sub "++valueText val++", 1")
-cgPostfixOp (_,Increment) typ val = withFresh typ $ (=% "add "++valueText val++", 1")
-cgPostfixOp op _ _ = cgError ("Unknown/unimplemented postfix operator: "++show op)
+cgPostfixOp _ Decrement typ@(TPtr _) val = withFresh typ $ (=% getelementptr val [minusOne])
+cgPostfixOp _ Increment typ@(TPtr _) val = withFresh typ $ (=% getelementptr val [one])
+cgPostfixOp _ Decrement typ val = withFresh typ $ (=% "sub "++valueText val++", 1")
+cgPostfixOp _ Increment typ val = withFresh typ $ (=% "add "++valueText val++", 1")
+cgPostfixOp loc op _ _ = cgError loc ("Unknown/unimplemented postfix operator: "++show op)
 
+-- The truly no-op case: the source and target (LLVM!) type are the same
+cgCast to from lv | encodeType to == encodeType from = return lv
+-- Now for the cases with actually different types :)
 cgCast to@(TPtr _) (TPtr _) lv = do
   withFresh to (=% bitcast lv to)
 cgCast to@(TPtr _) TInt lv = do
@@ -348,15 +375,13 @@ cgCast to@(TPtr _) TNullPtr lv = cgCast to (TPtr TVoid) lv
 cgCast to@TInt TChar lv = withFresh to (=% "sext "++valueText lv++" to "++encodeType to)
 cgCast to@TInt TBool lv = withFresh to (=% "sext "++valueText lv++" to "++encodeType to)
 cgCast to@TChar TInt lv = withFresh to (=% trunc lv to)
-cgCast to from lv
-  | to == from = return lv
-  | otherwise = error ("cgCast: Unimplemented cast from "++show from++" to "++show to)
+cgCast to from _ = error ("cgCast: Unimplemented cast from "++show from++" to "++show to)
 
-cgUnary typ (pos,LogicalNot) = \val -> do
-    v <- getBinopCode Equal pos typ (false typ) val
+cgUnary typ loc LogicalNot = \val -> do
+    v <- getBinopCode Equal loc typ (false typ) val
     cgCast typ TBool v
-cgUnary typ (_pos,Minus) = \val -> withFresh typ (=% "sub "++encodeType typ++" 0, "++valueTextNoType val)
-cgUnary typ tok = error ("Unhandled unary operator: "++show tok++" for type "++show typ)
+cgUnary typ _ Minus = \val -> withFresh typ (=% "sub "++encodeType typ++" 0, "++valueTextNoType val)
+cgUnary typ loc tok = \_ -> cgError loc ("Unhandled unary operator: "++show tok++" for type "++show typ)
 
 {-type VC a = CounterT Int (State (Set Name, Map Name Name)) a
 runVC :: VC a -> a
@@ -390,13 +415,13 @@ runStringFinder = runSetWriter M.empty . runCounterT 0
 getStringMap :: SF (Map String Int)
 getStringMap = lift (listen (return ()) >>= \((),w) -> return w) 
 hasString s = M.member s <$> getStringMap
-stringReplacement str = do
+stringReplacement loc str = do
     b <- hasString str
     i <- if b then getString else newString
     let arrType = TArray (length str+1) TChar
     return $
-      TypedE (TPtr TChar) $
-      EArrToPtr $ TypedE arrType $
+      TypedE loc (TPtr TChar) $
+      EArrToPtr $ TypedE loc arrType $
         EVarRef (QualifiedName [printf ".STR%d" i])
   where
     getString :: SF Int
@@ -407,7 +432,7 @@ stringReplacement str = do
 
 getStrings = everywhereM (mkM f)
   where
-    f (TypedE _ (EString str)) = stringReplacement str
+    f (TypedE loc _ (EString str)) = stringReplacement loc str
     f x = return x
 
 showStringLLVM xs = "\""++(f =<< xs)++"\""

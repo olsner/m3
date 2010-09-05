@@ -63,12 +63,12 @@ Search x <> Search y = Search $ \t ->
       -- g maps from 'from' (t) to 't1', h from 't1' to 't2' (to)
       (t2,(\to from -> h to t1 . g t1 from))
 
-one = TypedE TInt (EInt 1)
-zero = TypedE TInt (EInt 0)
+one = TypedE dummyLocation TInt (EInt 1)
+zero = TypedE dummyLocation TInt (EInt 0)
 
-retype to _ (TypedE _ e) = TypedE to e
-cast to _ expr = TypedE to (ECast to expr)
-boolToInt _ _ cond = TypedE TInt (EConditional cond one zero)
+retype to _ (TypedE loc _ e) = TypedE loc to e
+cast to _ expr@(TypedE loc _ _) = TypedE loc to (ECast to expr)
+boolToInt _ _ cond@(TypedE loc _ _) = TypedE loc TInt (EConditional cond one zero)
 {-
 toInt to TInt = id
 toInt to TChar = cast to TChar
@@ -81,14 +81,14 @@ toChar to from = case from of
   TBool -> cast TChar TInt . boolToInt TInt TBool
   _ -> error ("toChar: to "++show to++" from "++show from)
 
-intNotZero TBool TInt = TypedE TBool . EBinary (initialPos "<generated>",NotEqual) zero
+intNotZero TBool TInt = TypedE dummyLocation TBool . EBinary (initialPos "<generated>",NotEqual) zero
 intNotZero to TChar = intNotZero to TInt . cast TInt TChar
 intNotZero a b = error ("intNotZero: to "++show a++" from "++show b)
 
-ptrNotNull TBool from = TypedE TBool . EBinary (initialPos "<generated>",NotEqual) (TypedE from ENullPtr)
+ptrNotNull TBool from = TypedE dummyLocation TBool . EBinary (initialPos "<generated>",NotEqual) (TypedE dummyLocation from ENullPtr)
 ptrNotNull a b = error ("ptrNotNull: to "++show a++" from "++show b)
 
-arrToPtr to (TArray _ _) (TypedE _ (EDeref expr@(TypedE _ _))) = TypedE to (EArrToPtr expr)
+arrToPtr to (TArray _ _) (TypedE _ _ (EDeref expr@(TypedE loc _ _))) = TypedE loc to (EArrToPtr expr)
 arrToPtr to from _ = error ("arrToPtr: to "++show to++" from "++show from)
 
 removeConst = Search $ \t -> case t of

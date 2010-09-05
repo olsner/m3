@@ -17,7 +17,9 @@ module Parser
   match,
   choice,
   commit,
-  commitAp,
+  (<*!>),
+  (*!>),
+  (<*!),
   failParse,
   localState,
   getState,
@@ -29,11 +31,15 @@ module Parser
 import Control.Applicative
 import Parser.Internal
 
--- | Slightly more intuitive interface for committing to parses - the first
--- parameter is something that (if matching) commits the parse, and the second
--- is something that must successfully parse if the first parser succeeds.
-commitAp :: Parser s t (a -> b) -> Parser s t a -> Parser s t b
-commitAp p q = p <*> commit q
+infixl 4 <*!>, *!>, <*!
+
+-- FIXME Document prettily :)
+-- These three are like <*>, *> and <* except the right-hand side is a committed
+-- parse (backtracking will fail instead of backtrack)
+
+p <*!> q = p <*> commit q
+p  *!> q = p *> commit q
+p <*!  q = p <* commit q
 
 {-# INLINE satisfyLookState #-}
 -- | Check the next token and current state against a predicate, return the

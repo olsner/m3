@@ -45,27 +45,27 @@ pAssignmentExpression = pLogicalOrExpression <**?> choice [pConditionalSuffix,su
 --  * list of operators that can follow
 --  * function to apply to said list
 
-pConditionalSuffix = token QuestionMark *> commit ((\t f cond -> EConditional cond t f) <$> pExpression <* token SingleColon <*> pAssignmentExpression)
+pConditionalSuffix = token QuestionMark *!> ((\t f cond -> EConditional cond t f) <$> pExpression <* token SingleColon <*> pAssignmentExpression)
 
 pLogicalOrExpression = {- skip a few logical operators -} pEqualityExpression
 
 pEqualityExpression = pRelationalExpression <**?> suffix
   where
     -- FIXME Does this give the right grouping?
-    suffix = flip <$> (EBinary <$> (token Equal <|> token NotEqual)) <*> commit pEqualityExpression
+    suffix = flip <$> (EBinary <$> (token Equal <|> token NotEqual)) <*!> pEqualityExpression
 
 pRelationalExpression = pShiftExpression <**?> choice suffices
   where
     suffices = map suffix [LessThan,GreaterThan,LessOrEqual,GreaterOrEqual]
     -- FIXME This gives the wrong grouping - a<(b<c) instead of (a<b)<c
     -- How fix?
-    suffix tok = flip <$> (EBinary <$> token tok) <*> commit pRelationalExpression
+    suffix tok = flip <$> (EBinary <$> token tok) <*!> pRelationalExpression
 
 pShiftExpression = pAdditiveExpression -- TODO bitshifts
 pAdditiveExpression = pMultiplicativeExpression <**?> choice suffices
   where
     suffices = map suffix [Minus,Plus] ++ [failParse "Expected '+' or '.'"]
-    suffix tok = flip <$> (EBinary <$> token tok) <*> commit pAdditiveExpression
+    suffix tok = flip <$> (EBinary <$> token tok) <*!> pAdditiveExpression
 
 pMultiplicativeExpression = pCastExpression
 pCastExpression = pUnaryExpression
@@ -96,7 +96,7 @@ pPrimaryExpression = inParens pExpression <|>
   ,EChar . snd <$> char -- FIXME Position is thrown away
   ,EBool True <$ keyword "true"
   ,EBool False <$ keyword "false"
-  ,keyword "cast" *> commit (ECast <$> inTypeBrackets pType <*> inParens pExpression)
+  ,keyword "cast" *!> (ECast <$> inTypeBrackets pType <*> inParens pExpression)
   ] <|> failParse "Out of luck in pLeftExpression")
 
 pAssignmentOperator = choice . map token $

@@ -26,7 +26,7 @@ pLeftType = choice
   ,keyword "bool" $> TBool
   ,keyword "const" *> (TConst <$> pType)
   ,keyword "struct" *> (TStruct <$> inBraces (concat <$> many pStructField))
-  ,inBrackets (commit (TPtr <$> pType))
+  ,inBrackets (TPtr <$> commit pType)
   ,typeIdentifier
   ] <|> failParse "Out of luck in pLeftType"
 pArraySuffix = maybe id TArray <$> optional (snd <$> inBrackets integer)

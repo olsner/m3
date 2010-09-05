@@ -21,7 +21,7 @@ singleton x = [x]
 
 pUnit = Unit <$> many pImport <*> addLocation (pModule <|> pFunction <* eof)
 
-pModule = keyword "module" *> (Decl <$> pName) <* token Semicolon <*> (ModuleDef . concat <$> commit (many pTopLevelDecl))
+pModule = keyword "module" *> (Decl <$> pName) <* token Semicolon <*!> (ModuleDef . concat <$> many pTopLevelDecl)
 pTopLevelDecl :: MParser [LocDecl LocE]
 pTopLevelDecl = singleton <$> addLocation (choice
   [pExternalFunction
@@ -34,8 +34,8 @@ pImport :: MParser Name
 pImport = keyword "import" *> pName <* token Semicolon
 
 pFunction = (\ret nm params code -> Decl nm (FunctionDef ret params code)) <$>
-    pType <*> pName <*> pFormalParamList <*> commit (addLocation pCompoundStatement)
-pExternalFunction = keyword "extern" *> commit (
+    pType <*> pName <*> pFormalParamList <*!> addLocation pCompoundStatement
+pExternalFunction = keyword "extern" *!> (
     (\linkage ret nm params -> Decl nm (ExternalFunction (fmap snd linkage) ret params))
       <$> optional string <*> pType <*> pName <*> pFormalParamList
       <* token Semicolon)
@@ -50,12 +50,12 @@ pStatement = addLocation $ choice
   [token Semicolon $> EmptyStmt
   ,pTypedef TypDecl
   ,VarDecl <$> pVarDecl (,,)
-  ,ReturnStmt <$> (keyword "return" *> pExpression <* commit (token Semicolon))
-  ,ReturnStmtVoid <$ (keyword "return" *> commit (token Semicolon))
-  ,ExprStmt <$> pExpression <* commit (token Semicolon)
+  ,ReturnStmt <$> (keyword "return" *> pExpression <*! token Semicolon)
+  ,ReturnStmtVoid <$ (keyword "return" *!> token Semicolon)
+  ,ExprStmt <$> pExpression <*! token Semicolon
   ,pCompoundStatement
-  ,keyword "if" *> commit (IfStmt <$> inParens pExpression <*> pStatement <*> pElse)
-  ,keyword "while" *> commit (WhileStmt <$> inParens pExpression <*> pStatement)
+  ,keyword "if" *!> (IfStmt <$> inParens pExpression <*> pStatement <*> pElse)
+  ,keyword "while" *!> (WhileStmt <$> inParens pExpression <*> pStatement)
   ] <|> failParse "Out of luck in pStatement"
 
 pVarDecl f = genVarDecl f (optional pVarInitializer)

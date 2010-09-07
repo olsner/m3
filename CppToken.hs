@@ -88,7 +88,7 @@ data Tok =
     | Decrement
     | Increment
 
-    deriving (Show, Read, Eq, Ord, Data, Typeable)
+    deriving (Read, Eq, Ord, Data, Typeable)
 
 oneCharOperators = zip ";{}()[],.*&+-/!~|<>?:=" $
     [Semicolon
@@ -170,3 +170,17 @@ reservedWords =
     ,"void"
     ,"volatile"
     ,"while"]
+
+
+swap (x,y) = (y,x)
+instance Show Tok where
+  show token = '`':showTok' token ++ "'"
+
+showTok' (Reserved word)    = word
+showTok' (Identifier ident) = ident
+showTok' (StringTok s)      = show s
+showTok' (IntegerTok i)     = show i
+showTok' (CharTok c)        = show c
+showTok' token
+  | Just c <- lookup token (map swap oneCharOperators) = [c]
+  | Just str <- lookup token (map swap multiCharOperators) = str

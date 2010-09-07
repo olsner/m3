@@ -36,7 +36,7 @@ type Error t r = Stream t -> String -> r
 type Retry t r = Error t r
 type Success s t a r = a -> S s t -> r
 
-data S s t = S !s !(Stream t)
+data S s t = S !s !Pos !(Stream t)
 
 -- | The main parser type. This takes three arguments: the state, the token
 -- type and the result type.
@@ -47,12 +47,15 @@ newtype Parser s t a = P (forall r . S s t -> Success s t a r -> Retry t r -> Er
 -- result.
 {-# INLINE runParser #-}
 runParser :: Parser s t a -> s -> Stream t -> (Either String (a,s), Stream t)
-runParser (P p) s ts = p (S s ts) suc err err
+runParser (P p) s ts = p (S s firstPos ts) suc err err
   where
     {-# INLINE suc #-}
-    suc = \a (S s ts) -> (Right (a,s),ts)
+    suc = \a (S s _ ts) -> (Right (a,s),ts)
     {-# INLINE err #-}
     err = \ts msg -> (Left msg,ts)
+    firstPos = case ts of
+      ((pos,_):_) -> pos
+      _ -> initialPos "<empty>" -- TODO Maybe we should require an initial position from the caller?
 
 instance Functor (Parser s t) where
   {-# INLINE fmap #-}
@@ -97,12 +100,12 @@ commit (P p) = P $ \s suc _ err -> p s suc err err
 {-# INLINE failParse #-}
 -- | Cause a parse failure with the given message.
 failParse :: String -> Parser s t a
-failParse msg = P $ \(S _ ts) _ retr _ -> retr ts msg -- TODO When S has position, add it to the message.
+failParse msg = P $ \(S _ pos ts) _ retr _ -> retr ts (show pos++": "++msg)
 
 nextLook :: String -> (Stream t -> Stream t) -> Parser s t (Pos,t)
-nextLook msg f = P $ \(S s ts) suc retr _ -> case ts of
-  [] -> retr ts (msg++": EOF")
-  (t:_) -> suc t (S s (f ts))
+nextLook msg f = P $ \(S s _ ts) suc retr _ -> case ts of
+  [] -> retr ts (msg++": end-of-file")
+  (t@(pos,_):_) -> suc t (S s pos (f ts))
 
 {-# INLINE next #-}
 -- | Return and consume the next token. Fail the parse if at end of stream.
@@ -118,23 +121,23 @@ lookPosition = (fst <$> look) <|> pure endOfFilePos
 
 {-# INLINE eof #-}
 -- | Match only if at end of stream.
-eof :: Parser s t ()
-eof = P $ \s@(S _ ts) suc retr _ -> case ts of
+eof :: Show t => Parser s t ()
+eof = P $ \s@(S _ _ ts) suc retr _ -> case ts of
   [] -> suc () s
-  _ -> retr ts ("eof: Not EOF")
+  ((pos,t):_) -> retr ts (show pos ++": found "++show t++" but expected end of file")
 
 -- | Return the current state.
 getState :: Parser s t s
-getState = P $ \ss@(S s _) suc _ _ -> suc s ss
+getState = P $ \ss@(S s _ _) suc _ _ -> suc s ss
 
 -- | Replace the state entirely. Note: when backtracking past this call, the
 -- state will be discarded and parsing will continue with the previous state.
 putState :: s -> Parser s t s
-putState s = P $ \(S _ ts) suc _ _ -> suc s (S s ts)
+putState s = P $ \(S _ pos ts) suc _ _ -> suc s (S s pos ts)
 
 -- | Pretty much (getState >>=).
 withState :: (s -> Parser s t a) -> Parser s t a
-withState f = P $ \ss@(S s ts) suc -> let P p = f s in p ss suc
+withState f = P $ \ss@(S s _ _) suc -> let P p = f s in p ss suc
 
 modifyState :: (s -> s) -> Parser s t ()
-modifyState f = P $ \(S s ts) suc _ _ -> suc () (S (f s) ts)
+modifyState f = P $ \(S s pos ts) suc _ _ -> suc () (S (f s) pos ts)

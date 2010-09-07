@@ -37,7 +37,7 @@ parse path = do
           --putStrLn "*** Full token stream:"
           --mapM_ print (map snd tokens)
           let msg = case res of Left err -> err; _ -> show res
-          hPutStrLn stderr ("Parse error "++msg)
+          hPutStrLn stderr msg
           exitFailure
 
 firstM :: Monad m => (a -> m (Maybe b)) -> [a] -> m (Maybe b)

@@ -49,9 +49,9 @@ p <*!  q = p <* commit q
 -- end of stream is reached and does *not* consume the token.
 satisfyLookState :: Show t => String -> (s -> t -> Parser s t a) -> Parser s t (Pos,a)
 satisfyLookState msg p = do
-  (pos,tok) <- look <|> failParse ("Parser.satisfyLookState: expected "++msg++" instead of EOF")
+  (pos,tok) <- look <|> failParse ("found EOF but expected "++msg)
   s <- getState
-  ((,) pos <$> p s tok) <|> failParse ("Parser.satisfyLookState: expected "++msg++" but found "++show (pos,tok))
+  ((,) pos <$> p s tok) <|> failParse ("found "++show tok++" but expected "++msg)
 
 {-# INLINE satisfyLook #-}
 -- | Like satisfyLookState but the predicate does not look at the state.

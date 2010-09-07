@@ -4,5 +4,14 @@ return 0}
 return 2;
 >>>
 >>>2
-Parse error Parser.satisfyLookState: expected Semicolon but found (tests/temp_test.m (line 6, column 9),CloseBrace)
+tests/temp_test.m (line 6, column 9): found `}' but expected `;'
+>>>= 1
+
+./test_main.sh
+<<<
+return 0;}
+return 2;
+>>>
+>>>2
+tests/temp_test.m (line 7, column 1): found `return' but expected end of file
 >>>= 1

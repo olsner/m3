@@ -19,7 +19,7 @@ import Grammar.Utils
 
 singleton x = [x]
 
-pUnit = Unit <$> many pImport <*> addLocation (pModule <|> pFunction <* eof)
+pUnit = Unit <$> many pImport <*> addLocation (pModule <|> pFunction) <* eof
 
 pModule = keyword "module" *> (Decl <$> pName) <* token Semicolon <*!> (ModuleDef . concat <$> many pTopLevelDecl)
 pTopLevelDecl :: MParser [LocDecl LocE]

@@ -289,7 +289,7 @@ cgExpr loc typ e = case e of
   (EBinary op x y) -> do
     xres <- cgTypedE x
     yres <- cgTypedE y
-    printloc ("EBinary "++show (snd op))
+    printloc ("binary "++show (snd op))
     getBinopCode (snd op) loc typ xres yres
   (EArrayIndex arr@(TypedE _ (TPtr elem) _) ix) -> do
     arr' <- cgTypedE arr
@@ -305,7 +305,7 @@ cgExpr loc typ e = case e of
       TPtr _ -> withFresh typ (=% getelementptr v [zero, intValue ix TInt])
       _ -> withFresh typ (=% extractvalue v ix)
   (EPostfix (_,op) (TypedE _ _ (EDeref lvExpr))) -> do
-    printloc ("EPostfix "++show op)
+    printloc ("postfix "++show op)
     lv <- cgTypedE lvExpr
     val <- withFresh typ (=% load lv)
     res <- cgPostfixOp loc op typ val
@@ -313,7 +313,7 @@ cgExpr loc typ e = case e of
     return val
   (EUnary op val) -> do
     v <- cgTypedE val
-    printloc ("EUnary "++show (snd op))
+    printloc ("unary "++show (snd op))
     cgUnary typ loc (snd op) v
   (ECast to expr@(TypedE _ from _)) -> do
     lv <- cgTypedE expr

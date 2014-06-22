@@ -88,7 +88,7 @@ withImport name m = do
 withArg (FormalParam typ (Just name)) m = inScope name (Var Const typ) m
 withArg _ m = m
 
-tcUnitByName :: MonadIO m => Name -> TC m (Unit TypedE)
+tcUnitByName :: Functor m => MonadIO m => Name -> TC m (Unit TypedE)
 tcUnitByName name = do
   res <- getModule name -- errors if module not found - it must be found
   -- TODO debugging-printing
@@ -101,21 +101,21 @@ tcUnitByName name = do
 -- instead whenever there's recursion.
 putBlackhole name = putModule name (error "Recursive module inclusion")
 
-tcUnit :: MonadIO m => Name -> Unit LocE -> TC m (Unit TypedE)
+tcUnit :: Functor m => MonadIO m => Name -> Unit LocE -> TC m (Unit TypedE)
 tcUnit name (Unit imports decl) = traceM ("tcUnit "++show name) $ do
   putBlackhole name
   unit <- Unit imports <$> foldr withImport (tcDecl (QualifiedName []) decl) imports
   putModule name (Right unit)
   return unit
 
-tcDecl :: MonadIO m => Name -> LocDecl LocE -> TC m (LocDecl TypedE)
+tcDecl :: Functor m => MonadIO m => Name -> LocDecl LocE -> TC m (LocDecl TypedE)
 tcDecl name (Loc loc decl@(Decl local def)) = traceM (printf "tcDecl %s %s %s" (show name)(show local) (show decl)) $
   Loc loc <$> Decl local <$> tcDef loc (qualifyName name local) local def
 
 invalidFormalParams [] = False
 invalidFormalParams xs = any (== VarargParam) (init xs)
 
-tcDef :: MonadIO m => Location -> Name -> Name -> Def LocE -> TC m (Def TypedE)
+tcDef :: Functor m => MonadIO m => Location -> Name -> Name -> Def LocE -> TC m (Def TypedE)
 tcDef loc name local def = traceM ("tcDef ("++show loc++") "++show name++": "++show def) $ case def of
   (ModuleDef decls) -> ModuleDef <$> mapM (tcDecl name) decls
   (FunctionDef retT args code) -> do
@@ -139,7 +139,7 @@ maybeM :: Applicative m => (a -> m b) -> Maybe a -> m (Maybe b)
 maybeM f (Just x) = Just <$> f x
 maybeM _ Nothing = pure Nothing
 
-inScopeVars :: MonadIO m => [VarDecl LocE] -> ([VarDecl TypedE] -> TC m a) -> TC m a
+inScopeVars :: Functor m => MonadIO m => [VarDecl LocE] -> ([VarDecl TypedE] -> TC m a) -> TC m a
 inScopeVars vars m = f [] vars
   where
     -- f :: [(Name,Type,Maybe TypedE)] -> [(Name,Type,Maybe LocE)] -> TC m a
@@ -155,7 +155,7 @@ inScopeVars vars m = f [] vars
     g loc (TConst _) Nothing = tcError loc "Constant variable without initializer"
     g _ typ init = maybeM (tcExprAsType typ) init
 
-tcStmt :: MonadIO m => Type -> [FormalParam] -> LocStatement LocE -> TC m (LocStatement TypedE)
+tcStmt :: Functor m => MonadIO m => Type -> [FormalParam] -> LocStatement LocE -> TC m (LocStatement TypedE)
 tcStmt ret args (Loc loc stmt) = traceM ("tcStmt "++show stmt) $ Loc loc <$> case stmt of
   (ReturnStmt e)     -> ReturnStmt <$> tcExprAsType ret e
   (ExprStmt e)       -> ExprStmt <$> tcExpr e
@@ -175,21 +175,21 @@ implicitlyConvertType to orig@(TypedE loc from _) =
     Just fun -> Just (fun orig)
     Nothing -> Nothing
 
-tcExprAsType :: MonadIO m => Type -> LocE -> TC m TypedE
+tcExprAsType :: Functor m => MonadIO m => Type -> LocE -> TC m TypedE
 tcExprAsType expT e@(LocE loc _) = do
   typed@(TypedE _ t _) <- tcExpr e
   case implicitlyConvertType expT typed of
     Just typed' -> return typed'
     Nothing -> tcError loc ("Expression "++show typed++" not of expected type "++show expT++" but "++show t++", and no implicit conversions were available")
 
-tcParams :: MonadIO m => [FormalParam] -> [LocE] -> TC m [TypedE]
+tcParams :: Functor m => MonadIO m => [FormalParam] -> [LocE] -> TC m [TypedE]
 tcParams (FormalParam typ _:ps) (x:xs) = liftM2 (:) (tcExprAsType typ x) (tcParams ps xs)
 tcParams [VarargParam]          xs     = mapM tcExpr xs
 tcParams (VarargParam:_)        _      = tcError dummyLocation "Vararg param in non-last position. The type-checker should have caught this already!"
 tcParams []                     []     = return []
 tcParams formal                 actual = tcError dummyLocation ("Argument number mismatch. Remaining formals: "++show formal++", actuals: "++show actual)
 
-tcExpr :: MonadIO m => LocE -> TC m TypedE
+tcExpr :: Functor m => MonadIO m => LocE -> TC m TypedE
 tcExpr (LocE loc e) = case e of
   (EBool b) -> return (typedE TBool (EBool b))
   (EInt i) -> return (typedE TInt (EInt i))

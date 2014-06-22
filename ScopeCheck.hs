@@ -71,7 +71,7 @@ addName name = modify (\s -> s { nameMap = M.insert name (depth s, name) (nameMa
 -- (4?) Correctness check: no VarDecl nodes remain, no CompoundStmt has duplicate names
 
 -- define our own top-down traversal...
-sc :: MonadIO m => LocStatement LocE -> SC m (LocStatement LocE)
+sc :: Functor m => MonadIO m => LocStatement LocE -> SC m (LocStatement LocE)
 sc =
   preCheck >=>
   {-traceFunM "convertVarDecl1"-} convertVarDecl1 >=>
@@ -80,10 +80,10 @@ sc =
 -- FIXME This should run in its own State (Int,Map Name Int), the state produced
 -- is not interesting for the outer checking step
 --preCheck :: (MonadIO m, Typeable a, Data a, Show a) => a -> SC m a
-preCheck :: MonadIO m => LocStatement LocE -> SC m (LocStatement LocE)
+preCheck :: Functor m => MonadIO m => LocStatement LocE -> SC m (LocStatement LocE)
 preCheck (Loc loc stmt) = Loc loc <$> f stmt -- traceFunM "preCheck" f
   where
-    f :: MonadIO m => Statement LocE -> SC m (Statement LocE)
+    f :: Functor m => MonadIO m => Statement LocE -> SC m (Statement LocE)
     f (CompoundStmt [] stmts) = CompoundStmt [] <$> mapM preCheck stmts
     f (IfStmt cond t f) = IfStmt cond <$> inNewScope (preCheck t) <*> inNewScope (preCheck f)
     f (WhileStmt cond body) = WhileStmt cond <$> inNewScope (preCheck body)
@@ -115,7 +115,7 @@ mapCont :: Monad m => (a -> ([a] -> m [a])) -> [a] -> m [a]
 mapCont _ [] = return []
 mapCont k (x:xs) = k x =<< mapCont k xs
 
-convertVarDecl1 :: MonadIO m => LocStatement LocE -> SC m (LocStatement LocE)
+convertVarDecl1 :: Functor m => MonadIO m => LocStatement LocE -> SC m (LocStatement LocE)
 convertVarDecl1 stmt@(Loc loc _) = do
   xs <- convertVarDecls stmt []
   case xs of
@@ -123,7 +123,7 @@ convertVarDecl1 stmt@(Loc loc _) = do
     _   -> scError loc "convertVarDecl1: One statement became several :("
 
 -- TODO SYB:ify this - for all "other" statements: keep structure of everything that isn't a Statement, apply convertVarDecl1 to every statement
-convertVarDecls :: MonadIO m => LocStatement LocE -> ([LocStatement LocE] -> SC m [LocStatement LocE])
+convertVarDecls :: Functor m => MonadIO m => LocStatement LocE -> ([LocStatement LocE] -> SC m [LocStatement LocE])
 convertVarDecls (Loc loc stmt) k = case stmt of
   (CompoundStmt [] stmts) -> do
     let (vars,tail) = getVars stmts
@@ -136,10 +136,10 @@ convertVarDecls (Loc loc stmt) k = case stmt of
   x -> return (Loc loc x:k)
 
 
-renameShadowed :: MonadIO m => LocStatement LocE -> SC m (LocStatement LocE)
+renameShadowed :: Functor m => MonadIO m => LocStatement LocE -> SC m (LocStatement LocE)
 renameShadowed (Loc loc stmt) = Loc loc <$> f stmt -- traceFunM "renameShadowed" f
   where
-    f :: MonadIO m => Statement LocE -> SC m (Statement LocE)
+    f :: Functor m => MonadIO m => Statement LocE -> SC m (Statement LocE)
     f (CompoundStmt vars stmts) = inNewScope $ do
       vars' <- forM vars $ \(Loc loc (typ,name,init)) -> do
         --traceIO =<< gets (show . used)
@@ -164,7 +164,7 @@ renameShadowed (Loc loc stmt) = Loc loc <$> f stmt -- traceFunM "renameShadowed"
     --f x = scError ("Unhandled statement: "++show x)
 
     g = everywhereM (mkM g_)
-    g_ :: MonadIO m => LocE -> SC m LocE
+    g_ :: Functor m => MonadIO m => LocE -> SC m LocE
     g_ (LocE loc expr) = case expr of
       (EVarRef name) -> do
         existingVar <- gets (M.lookup name . nameMap)

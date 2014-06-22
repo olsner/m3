@@ -31,7 +31,7 @@ data ValueKind = Variable | ConstExpr | AllocaPtr deriving Show
 data Value = Value { valueKind :: ValueKind, valueType :: Type, valueTextNoType :: String } deriving Show
 type Locals = Map String Value
 type CGMT m = CounterT Int (StateT Locals (WriterT String m))
-type CGM a = forall m . (MonadIO m) => CGMT m a
+type CGM a = forall m . (Functor m, MonadIO m) => CGMT m a
 
 cgError :: Location -> String -> m a
 cgError loc msg = error ("[CG] "++show loc++": "++msg)
@@ -56,7 +56,7 @@ mkValue :: ValueKind -> Type -> String -> Value
 mkValue k typ s = Value k typ s
 valueText v = encodeType (valueType v)++' ':valueTextNoType v
 
-runCGM :: Monad m => FormalParams -> CGMT m a -> WriterT String m a
+runCGM :: (Functor m, Monad m) => FormalParams -> CGMT m a -> WriterT String m a
 runCGM args = fmap fst . flip runStateT (M.fromList $ concatMap f args) . runCounterT 0
   where
     f (FormalParam typ (Just name)) = [(nm, mkValue ConstExpr typ ('%':nm))] where nm = encodeName name
@@ -69,7 +69,7 @@ mapMapM f = liftM M.fromList . mapM (\(k,v) -> (,) k `liftM` f v) . M.toList
 stringfindUnits :: Map Name (Unit TypedE) -> (Map Name (Unit TypedE), Map String Int)
 stringfindUnits = runStringFinder . mapMapM getStrings
 
-printLLVM :: (MonadIO m, MonadReader (Map Name (Unit TypedE)) m) => Name -> m ()
+printLLVM :: (Functor m, MonadIO m, MonadReader (Map Name (Unit TypedE)) m) => Name -> m ()
 printLLVM name = do
   output <- execWriterT $ do
     (units, stringMap) <- asks stringfindUnits
@@ -154,7 +154,7 @@ cgDef loc name local def = case def of
   (VarDef _ _) -> cgError loc ("Weird VarDef: "++show def)
   (TypeDef _) -> return ()
 
-cgFunBody :: MonadIO m => LocStatement TypedE -> CGMT m ()
+cgFunBody :: (Functor m, MonadIO m) => LocStatement TypedE -> CGMT m ()
 cgFunBody = cgStmt
 
 infixl 1 =%
@@ -182,9 +182,9 @@ intValue i t = mkValue ConstExpr t (show i)
 bitcast value to = "bitcast " ++ valueText value ++ " to " ++ encodeType to
 trunc value to = "trunc " ++ valueText value ++ " to " ++ encodeType to
 
-withVars :: MonadIO m => [VarDecl TypedE] -> CGMT m a -> CGMT m a
+withVars :: (Functor m, MonadIO m) => [VarDecl TypedE] -> CGMT m a -> CGMT m a
 withVars vars m = foldr withVar m vars
-withVar :: MonadIO m => VarDecl TypedE -> CGMT m a -> CGMT m a
+withVar :: (Functor m, MonadIO m) => VarDecl TypedE -> CGMT m a -> CGMT m a
 withVar (Loc _ (TConst _,name,init)) m =
   cgTypedE (fromJust init) >>= \initVal -> withLocal name initVal m
 withVar (Loc loc (typ,name,init)) m =

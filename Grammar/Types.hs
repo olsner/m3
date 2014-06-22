@@ -34,7 +34,7 @@ pLeftType = choice
 pArraySuffix = maybe id TArray <$> optional (snd <$> inBrackets integer)
 
 pTypedef f = choice
-  [keyword "type" *> ((,) <$> pName <*> (token Assignment *> pType)) <* token Semicolon
+  [keyword "type" *!> ((,) <$> pName <*> (token Assignment *> pType)) <*! token Semicolon
   ] >>= \(name,typ) -> stateAddType name typ >> return (f name typ)
 
 genVarDecl :: (Type -> Name -> b -> a) -> MParser b -> MParser [Loc a]

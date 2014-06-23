@@ -8,13 +8,10 @@ module interp::bf1;
 
 [const char] findloop([const char] start, [const char] end, bool forward)
 {
-	// NB! The only reason for putting this in the top-level is that multiple
-	// local variables with the same name isn't currently supported.
-	[const char] p;
 	int nest = 1;
 	if (forward)
 	{
-		p = start;
+		[const char] p = start;
 		while (p < end)
 		{
 			if (*p == '[') nest++;
@@ -27,7 +24,7 @@ module interp::bf1;
 	}
 	else
 	{
-		p = end;
+		[const char] p = end;
 		while (p >= start)
 		{
 			//printf("findloop backwards %p:%p:%p (%d/%c, %d)\n", start,p,end, *p, *p, nest);

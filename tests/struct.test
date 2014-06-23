@@ -5,6 +5,7 @@ type bar = struct { int a; [const char] b; };
 bar var;
 return 0;
 >>>
+>>>2
 >>>=0
 
 ./test_main.sh
@@ -15,4 +16,5 @@ bar var;
 var.a = 7;
 return var.a;
 >>>
+>>>2
 >>>=7

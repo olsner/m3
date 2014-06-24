@@ -110,7 +110,7 @@ encodeType (TFunction t params) = encodeType t++"("++intercalate "," (map (encod
 encodeType (TArray len typ) = "["++show len++" x "++encodeType typ++"]"
 encodeType (TStruct fields) = "{"++intercalate "," (map encodeField fields)++"}"
 encodeType TNullPtr = encodeType (TPtr TVoid)
---encodeType other = error ("encodeType "++show other)
+encodeType other = error ("encodeType "++show other)
 
 encodeField (Loc _ (_,typ)) = encodeType typ
 structFieldOffset _ (TStruct fields) name | Just ix <- findIndex ((==name).fst.locData) fields = return ix
@@ -182,19 +182,22 @@ intValue i t = mkValue ConstExpr t (show i)
 bitcast value to = "bitcast " ++ valueText value ++ " to " ++ encodeType to
 trunc value to = "trunc " ++ valueText value ++ " to " ++ encodeType to
 
-withVars :: (Functor m, MonadIO m) => [VarDecl TypedE] -> CGMT m a -> CGMT m a
+withVars :: (Functor m, MonadIO m) => [LocDecl TypedE] -> CGMT m a -> CGMT m a
 withVars vars m = foldr withVar m vars
-withVar :: (Functor m, MonadIO m) => VarDecl TypedE -> CGMT m a -> CGMT m a
-withVar (Loc _ (TConst _,name,init)) m =
-  cgTypedE (fromJust init) >>= \initVal -> withLocal name initVal m
-withVar (Loc loc (typ,name,init)) m =
-  maybeM cgTypedE init >>= \initVal -> do
-    let value = mkValue AllocaPtr (TPtr typ) ("%"++encodeName name)
-    withLocal name value $ do
-      locComment ("Variable "++show name) loc
-      value =% alloca typ
-      maybeM (\initVal -> store initVal value) initVal
-      m
+withVar :: (Functor m, MonadIO m) => LocDecl TypedE -> CGMT m a -> CGMT m a
+withVar (Loc loc (Decl name def)) m = case def of
+    (VarDef (TConst _) init) ->
+      cgTypedE (fromJust init) >>= \initVal -> withLocal name initVal m
+    (VarDef typ init) ->
+      maybeM cgTypedE init >>= \initVal -> do
+        let value = mkValue AllocaPtr (TPtr typ) ("%"++encodeName name)
+        withLocal name value $ do
+          locComment ("Variable "++show name) loc
+          value =% alloca typ
+          maybeM (\initVal -> store initVal value) initVal
+          m
+    (TypeDef _) -> m
+    _ -> cgError loc ("Unexpected vardef "++show def)
 
 cgStmt :: LocStatement TypedE -> CGM ()
 cgStmt (Loc loc stmt) = case stmt of

@@ -4,7 +4,7 @@ module Grammar
   (pUnit
   ,pName
   ,runParser {- from Parser -}
-  ,initialParserState {- from Parser.Utils -}
+  ,initialParserState {- from Grammar.Utils -}
   ) where
 
 import Control.Applicative
@@ -49,7 +49,7 @@ pCompoundStatement = CompoundStmt [] <$> inBraces (commit (many pStatement))
 pStatement = addLocation $ choice
   [token Semicolon $> EmptyStmt
   ,pTypedef TypDecl
-  ,VarDecl <$> pVarDecl (,,)
+  ,VarDecl <$> pVarDecl (\typ name e -> Decl name (VarDef typ e))
   ,ReturnStmt <$> (keyword "return" *> pExpression <*! token Semicolon)
   ,ReturnStmtVoid <$ (keyword "return" *!> token Semicolon)
   ,ExprStmt <$> pExpression <*! token Semicolon

@@ -61,11 +61,4 @@ pName = QualifiedName . map snd <$> sepBy1 identifier (token DoubleColon)
 
 data ParserState = PState (Map Name Type) deriving Show
 
--- TODO Must build the state out of imported modules to see imported types
 initialParserState = PState M.empty
-
-lookupTypeIdentifier :: ParserState -> Name -> Maybe Type
-lookupTypeIdentifier (PState ids) name = M.lookup name ids
-
-stateAddType :: Name -> Type -> MParser ()
-stateAddType name typ = modifyState (\(PState m) -> PState (M.insert name typ m))

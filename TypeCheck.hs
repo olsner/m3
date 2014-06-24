@@ -23,7 +23,7 @@ import Types.Conv
 import Counter() -- Also implements Applicative for StateT o.o
 
 data VarType = Const | Global | NonConst deriving (Show)
-data Binding = Var VarType Type | Alias Name deriving (Show)
+data Binding = Var VarType Type | Alias Name | Type Type deriving (Show)
 type ModBinding = Either (Unit LocE) (Unit TypedE)
 type ModMap = Map Name ModBinding
 data TCState = TCState { bindings :: Map Name Binding, modules :: ModMap }
@@ -49,6 +49,11 @@ getBinding loc name = do
     Just (Alias alias) -> getBinding loc alias
     Just r             -> return (name,r)
     Nothing -> tcError loc ("getBinding "++show name++": Name not found\n"++unlines (map show (M.toList bs)))
+getBoundType loc name = do
+  b <- getBinding loc name
+  case b of
+    (_,Type t) -> return t
+    _ -> tcError loc ("getBoundType "++show name++": Name not a type")
 
 getModule name = fromJust . M.lookup name <$> gets modules
 putModule name bind = modifyModules (M.insert name bind)
@@ -66,20 +71,21 @@ typecheck name = do
   mods <- asks (M.map Left)
   snd . M.mapEither id . modules . snd <$> runTC (tcUnitByName name) mods
 
-traceM :: MonadIO m => String -> m a -> m a
---traceM str m = liftIO (putStrLn str) >> m >>= \x -> liftIO (putStr (str++": done\n")) >> return x
+traceM :: MonadIO m => Show a => String -> m a -> m a
+--traceM str m = liftIO (putStrLn str) >> m >>= \x -> liftIO (putStr (str++": => "++show x++"\n")) >> return x
 traceM = flip const
 
 withUnitImported (Unit _ decl) = withDecl (QualifiedName []) decl
 withDecls name = flip (foldr (withDecl name))
 withDecl name (Loc loc decl@(Decl local def)) = traceM ("withDecl "++show decl++" in "++show name) .
   withDef loc (qualifyName name local) local def
-withDef loc name local def = traceM (printf "withDef %s local %s: %s" (show name) (show local) (show def)) . case def of
+
+withDef _loc name local def = traceM (printf "withDef %s local %s: %s" (show name) (show local) (show def)) . case def of
   (ModuleDef decls) -> withDecls name decls
   (FunctionDef retT args _) -> inScope name (Var NonConst (TFunction retT args)) . inScope local (Alias name)
   (ExternalFunction _ ret args) -> inScope name (Var NonConst (TFunction ret args)) . inScope local (Alias name)
   (VarDef typ _) -> inScope name (Var Global typ) . inScope local (Alias name)
-  (TypeDef _) -> const (tcError loc ("Imported typedefs not supported: "++show name))
+  (TypeDef typ) -> inScope name (Type typ) . inScope local (Alias name)
 
 withImport name m = do
   unit <- tcUnitByName name
@@ -115,45 +121,71 @@ tcDecl name (Loc loc decl@(Decl local def)) = traceM (printf "tcDecl %s %s %s" (
 invalidFormalParams [] = False
 invalidFormalParams xs = any (== VarargParam) (init xs)
 
+-- tcType :: Functor m => Location -> Type -> TC m Type
+tcType = foldTypeM f
+  where
+    f loc t = traceM (printf "tcType %s %s" (show loc) (show t)) $ case t of
+      (TNamedType name) -> tcType loc =<< getBoundType loc name
+      (TFunction ret fps) -> TFunction <$> tcType loc ret <*> tcFormalParams loc fps
+      _ -> return t
+
+tcFormalParams loc fps = do
+  when (invalidFormalParams fps) (tcError loc "Malformed formal parameter list")
+  mapFormalParamTypes (tcType loc) fps
+
 tcDef :: Functor m => MonadIO m => Location -> Name -> Name -> Def LocE -> TC m (Def TypedE)
 tcDef loc name local def = traceM ("tcDef ("++show loc++") "++show name++": "++show def) $ case def of
   (ModuleDef decls) -> ModuleDef <$> mapM (tcDecl name) decls
   (FunctionDef retT args code) -> do
-    when (invalidFormalParams args) (tcError loc "Malformed formal parameter list")
-    addBinding name (Var NonConst (TFunction retT args))
+    funType@(TFunction retT args) <- tcType loc (TFunction retT args)
+    addBinding name (Var NonConst funType)
     addBinding local (Alias name)
     FunctionDef retT args <$> foldr withArg (tcStmt retT args code) args
   (ExternalFunction linkage ret args) -> do
-    addBinding name (Var NonConst (TFunction ret args))
+    funType@(TFunction ret args) <- tcType loc (TFunction ret args)
+    addBinding name (Var NonConst funType)
     addBinding local (Alias name)
     return (ExternalFunction linkage ret args)
   (VarDef typ e) -> do
-    let typ' = case typ of
-          TConst t -> t
-          _ -> typ
-    addBinding name (Var Global typ')
-    VarDef typ <$> maybeM (tcExprAsType typ') e
-  (TypeDef typ) -> return (TypeDef typ)
+    typ <- tcType loc typ
+    let unconst (TConst t) = t; unconst t = t
+    addBinding name (Var Global (unconst typ))
+    VarDef typ <$> maybeM (tcExprAsType typ) e
+  (TypeDef typ) -> do
+    typ <- tcType loc typ
+    addBinding name (Type typ)
+    addBinding local (Alias name)
+    return (TypeDef typ)
+
+
+tcLocalDef loc name def = traceM ("tcLocalDef ("++show loc++") "++show name++": "++show def) $ case def of
+  (VarDef (TConst _) Nothing) -> tcError loc "Constant variable without initializer"
+  (VarDef typ e) -> do
+    typ <- tcType loc typ
+    VarDef typ <$> maybeM (tcExprAsType typ) e
+  (TypeDef typ) -> TypeDef <$> tcType loc typ
+  _ -> tcError loc ("Unexpected local definition of "++show name++" as "++show def)
 
 maybeM :: Applicative m => (a -> m b) -> Maybe a -> m (Maybe b)
 maybeM f (Just x) = Just <$> f x
 maybeM _ Nothing = pure Nothing
 
-inScopeVars :: Functor m => MonadIO m => [VarDecl LocE] -> ([VarDecl TypedE] -> TC m a) -> TC m a
+inScopeVars :: Functor m => MonadIO m => [LocDecl LocE] -> ([LocDecl TypedE] -> TC m a) -> TC m a
 inScopeVars vars m = f [] vars
   where
     -- f :: [(Name,Type,Maybe TypedE)] -> [(Name,Type,Maybe LocE)] -> TC m a
     f acc [] = m (reverse acc)
-    f acc (lv@(Loc _ v@(_,name,_)):vs) = inScope name var (tcVar lv >>= \v' -> f (v':acc) vs)
-      where
-        var = case v of
-          (TConst typ,_,_) -> (Var Const typ)
-          (typ,_,_) -> (Var NonConst typ)
+    f acc ((Loc loc (Decl name def)):vs) = do
+      -- FIXME This should be done with 'name' in scope (but (var def) also
+      -- needs to have the return value to get the right type).
+      def <- tcLocalDef loc name def
+      inScope name (var def) (f (Loc loc (Decl name def):acc) vs)
 
-    tcVar (Loc loc (typ,name,init)) = Loc loc . (,,) typ name <$> g loc typ init
-    g _ typ@(TConst _) (Just init) = Just <$> tcExprAsType typ init
-    g loc (TConst _) Nothing = tcError loc "Constant variable without initializer"
-    g _ typ init = maybeM (tcExprAsType typ) init
+    var (VarDef typ _) = case typ of
+      (TConst typ) -> Var Const typ
+      _ -> Var NonConst typ
+    var (TypeDef typ) = Type typ
+    var x = error ("Unhandled definition "++show x)
 
 tcStmt :: Functor m => MonadIO m => Type -> [FormalParam] -> LocStatement LocE -> TC m (LocStatement TypedE)
 tcStmt ret args (Loc loc stmt) = traceM ("tcStmt "++show stmt) $ Loc loc <$> case stmt of
@@ -169,14 +201,16 @@ tcStmt ret args (Loc loc stmt) = traceM ("tcStmt "++show stmt) $ Loc loc <$> cas
 
 -- traceShowRes str x = trace str $ trace (str++show x) x
 
-implicitlyConvertType to orig@(TypedE loc from _) =
+implicitlyConvertType to orig@(TypedE _ from _) =
   -- traceShowRes ("implicitlyConvertType "++show orig++" to "++show to++", from "++show from++": ") $
   case implicitConversions to from of
     Just fun -> Just (fun orig)
     Nothing -> Nothing
 
 tcExprAsType :: Functor m => MonadIO m => Type -> LocE -> TC m TypedE
-tcExprAsType expT e@(LocE loc _) = do
+--tcExprAsType (TNamedType t) e@(LocE loc _) = tcError loc ("Expression "++show e++" has unresolved type "++show t)
+tcExprAsType expT e@(LocE loc _) = traceM ("tcExprAsType "++show expT++" "++show e) $ do
+  expT <- tcType loc expT
   typed@(TypedE _ t _) <- tcExpr e
   case implicitlyConvertType expT typed of
     Just typed' -> return typed'
@@ -190,7 +224,7 @@ tcParams []                     []     = return []
 tcParams formal                 actual = tcError dummyLocation ("Argument number mismatch. Remaining formals: "++show formal++", actuals: "++show actual)
 
 tcExpr :: Functor m => MonadIO m => LocE -> TC m TypedE
-tcExpr (LocE loc e) = case e of
+tcExpr (LocE loc e) = traceM ("tcExpr "++show loc++" "++show e) $ case e of
   (EBool b) -> return (typedE TBool (EBool b))
   (EInt i) -> return (typedE TInt (EInt i))
   (EString str) -> return (typedE (TPtr (TConst TChar)) (EString str))
@@ -254,12 +288,14 @@ tcExpr (LocE loc e) = case e of
     return (typedE res (EUnary op te))
   ENullPtr -> return (typedE TNullPtr ENullPtr)
   ECast to e -> do
+    to <- tcType loc to
     typed@(TypedE _ typ _) <- tcExpr e
     when (not (checkCast to typ)) $ tcError loc ("Invalid cast from "++show typ++" to "++show to)
     return (typedE to (ECast to typed))
   other -> tcError loc ("tcExpr: Unknown expression "++show other)
   where
-    typedE = TypedE loc
+    typedE (TNamedType name) expr = error ("tcExpr: unresolved type "++show name++" in "++show expr)
+    typedE t e = TypedE loc t e
 
 checkCast (TPtr _) (TPtr TVoid) = True
 checkCast (TConst (TPtr _)) (TPtr TVoid) = True

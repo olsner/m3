@@ -11,8 +11,6 @@ import System.Environment
 import System.Exit
 import System.IO
 
-import Text.Printf
-
 import AST
 import CppLexer (lexCpp)
 import CodeGen
@@ -30,7 +28,7 @@ parse path = do
     Right tokens ->
       case runParser pUnit initialParserState tokens of
         (Right (res,_),_) -> return res
-        (res,rest) -> do
+        (res,_rest) -> do
           -- TODO Flags for debug output...
           --putStrLn "*** Parse left residue (only 10 tokens shown):"
           --mapM_ print (take 10 rest)

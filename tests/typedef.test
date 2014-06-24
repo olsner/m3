@@ -11,11 +11,17 @@ return i-7;
 ./test_main.sh
 <<<
 // No semicolon: should be parse failure
-// TODO Expect correct message
 type foo = int
+>>>2
+tests/temp_test.m (line 8, column 1): found `}' but expected `;'
 >>>= 1
 
 ./test.sh toplevel_typedef1
+>>>
+>>>2
+>>>= 0
+
+./test.sh import_typedef1
 >>>
 >>>2
 >>>= 0

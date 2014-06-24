@@ -1,7 +1,8 @@
-{-# LANGUAGE TypeSynonymInstances,DeriveDataTypeable #-}
+{-# LANGUAGE TypeSynonymInstances,DeriveDataTypeable,DeriveFunctor #-}
 
 module AST where
 
+import Control.Applicative
 import Control.Monad.RWS
 
 import Data.Data (Data,Typeable)
@@ -40,7 +41,7 @@ instance Show Location where
       showLine p = "line "++show (sourceLine p)
       showCol p = "column "++show (sourceColumn p)
 
-data Loc a = Loc Location a deriving (Show,Eq,Ord,Data,Typeable)
+data Loc a = Loc Location a deriving (Show,Eq,Ord,Data,Typeable,Functor)
 locData (Loc _ x) = x
 
 -- A unit is a set of imports and *one* declaration of the toplevel entity.
@@ -57,7 +58,10 @@ importedUnits units name = snd $ execRWS (go name) units S.empty
       mapM_ go =<< asks (unitImports . fromJust . M.lookup name)
       tell [name]
 
+-- unitExports :: Unit e -> LocDecl e
+
 type VarDecl e = Loc (Type,Name,Maybe e)
+type TypDecl = Loc (Name,Type)
 
 type LocStatement e = Loc (Statement e)
 data Show e => Statement e =
@@ -68,9 +72,9 @@ data Show e => Statement e =
   -- Special entry for *parsing* variable declarations - should be transformed
   -- into nested CompoundStmt's after checking for conflicting variables as part of the
   -- scopechecking.
-  | VarDecl [VarDecl e]
+  | VarDecl [LocDecl e]
   | TypDecl Name Type
-  | CompoundStmt [VarDecl e] [LocStatement e]
+  | CompoundStmt [LocDecl e] [LocStatement e]
   | IfStmt e (LocStatement e) (LocStatement e)
   | WhileStmt e (LocStatement e)
   deriving (Show,Eq,Data,Typeable)
@@ -107,7 +111,30 @@ data Type =
   | TArray Int Type
   | TFunction Type FormalParams
   | TStruct [Loc (Name,Type)]
+  | TNamedType Name
   deriving (Show,Eq,Ord,Data,Typeable)
+
+mapFormalParamTypes :: Monad m => (Type -> m Type) -> FormalParams -> m FormalParams
+mapFormalParamTypes f = mapM f'
+  where
+    f' VarargParam = return VarargParam
+    f' (FormalParam typ name) = f typ >>= \typ -> return (FormalParam typ name)
+
+--type TypeFold m = Location -> Type -> m Type
+--foldTypeM :: Functor m => Monad m => TypeFold m -> TypeFold m
+foldTypeM f loc t = f loc =<< case t of
+  (TConst typ) -> TConst <$> g typ
+  (TPtr typ) -> TPtr <$> g typ
+  (TArray n typ) -> TArray n <$> g typ
+  (TFunction ret fps) -> TFunction <$> g ret <*> mapFormalParamTypes g fps
+  (TStruct fields) -> TStruct <$> mapM namedG fields
+  _ -> return t
+  where
+    g = g' loc
+    g' = foldTypeM f
+    namedG (Loc loc (name,typ)) = do
+      typ <- g' loc typ
+      return (Loc loc (name,typ))
 
 data Expr e =
     EFunCall e [e]

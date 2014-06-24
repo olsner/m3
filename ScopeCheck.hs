@@ -88,27 +88,30 @@ preCheck (Loc loc stmt) = Loc loc <$> f stmt -- traceFunM "preCheck" f
     f (IfStmt cond t f) = IfStmt cond <$> inNewScope (preCheck t) <*> inNewScope (preCheck f)
     f (WhileStmt cond body) = WhileStmt cond <$> inNewScope (preCheck body)
     f stmt@(VarDecl vars) = do
-      d <- gets depth
       --traceIO ("VarDecl: "++show stmt)
-      forM_ vars $ \(Loc loc (_typ,name,_init)) -> do
-        existingVar <- gets (M.lookup name . nameMap)
-        addName name
-        --traceIO ("existingVar "++show name++": "++show existingVar)
-        --newVar <- gets (M.lookup name . nameMap)
-        --traceIO ("newVar "++show name++": "++show newVar)
-        case existingVar of
-          Just (d',_) -> if d == d' then scError loc "Redeclaration at same depth." else scWarn loc "WARNING: Declared variable shadows outer variable" >> return ()
-          Nothing -> return ()
+      forM_ vars $ \(Loc loc (Decl name _)) -> checkName loc name
       return stmt
+    f x@(TypDecl name _) = checkName loc name >> return x
     f x@(ExprStmt _) = return x
     f x@(ReturnStmt _) = return x
     f EmptyStmt = return EmptyStmt
-    -- TODO Should be handled as variable declarations to properly handle shadowing and duplicates.
-    f x@(TypDecl _ _) = return x
     f x = scError loc ("Unknown statement in scope check: "++show x)
 
-getVars :: Show e => [LocStatement e] -> ([VarDecl e], [LocStatement e])
-getVars (Loc loc (VarDecl vs):xs) = (vs++ws, ys) where (ws,ys) = getVars xs
+    checkName loc name = do
+      existingVar <- gets (M.lookup name . nameMap)
+      addName name
+      --traceIO ("existingVar "++show name++": "++show existingVar)
+      --newVar <- gets (M.lookup name . nameMap)
+      --traceIO ("newVar "++show name++": "++show newVar)
+      case existingVar of
+        Just (d',_) -> do
+          d <- gets depth
+          if d == d' then scError loc "Redeclaration at same depth." else scWarn loc "WARNING: Declared variable shadows outer variable" >> return ()
+        Nothing -> return ()
+
+getVars :: Show e => [LocStatement e] -> ([LocDecl e], [LocStatement e])
+getVars (Loc _ (VarDecl vs):xs) = (vs++ws, ys) where (ws,ys) = getVars xs
+getVars (Loc loc (TypDecl n typ):xs) = (Loc loc (Decl n (TypeDef typ)):ws, ys) where (ws,ys) = getVars xs
 getVars xs = ([],xs)
 
 mapCont :: Monad m => (a -> ([a] -> m [a])) -> [a] -> m [a]
@@ -129,8 +132,7 @@ convertVarDecls (Loc loc stmt) k = case stmt of
     let (vars,tail) = getVars stmts
     (:k) . Loc loc . CompoundStmt vars <$> mapCont convertVarDecls tail
   (VarDecl vars) -> return [Loc loc (CompoundStmt vars k)]
-  -- Currently, type declarations don't introduce scoped bindings but are resolved directly at parse time.
-  (TypDecl _ _) -> return k
+  (TypDecl name typ) -> return [Loc loc (CompoundStmt [Loc loc (Decl name (TypeDef typ))] k)]
   (IfStmt c t f) -> (:k) . Loc loc <$> (IfStmt c <$> convertVarDecl1 t <*> convertVarDecl1 f)
   (WhileStmt c body) -> (:k) . Loc loc <$> (WhileStmt c <$> convertVarDecl1 body)
   x -> return (Loc loc x:k)
@@ -141,17 +143,15 @@ renameShadowed (Loc loc stmt) = Loc loc <$> f stmt -- traceFunM "renameShadowed"
   where
     f :: Functor m => MonadIO m => Statement LocE -> SC m (Statement LocE)
     f (CompoundStmt vars stmts) = inNewScope $ do
-      vars' <- forM vars $ \(Loc loc (typ,name,init)) -> do
+      vars' <- forM vars $ \(Loc loc (Decl name def)) -> do
         --traceIO =<< gets (show . used)
         exists <- gets (S.member name . used)
         --traceIO (show name++": "++show exists)
         newName <- if exists then qualifyName1 name . show <$> lift getAndInc else return name
         mapName name newName
-        newInit <- case init of
-          Just x -> Just <$> g x
-          Nothing -> return Nothing
+        newDef <- fDef loc def
         -- TODO Make a testcase for shadowed-renaming in initializers
-        return (Loc loc (typ,newName,newInit))
+        return (Loc loc (Decl newName newDef))
       CompoundStmt vars' <$> mapM renameShadowed stmts
     f (IfStmt cond t f) = IfStmt <$> g cond <*> inNewScope (renameShadowed t) <*> inNewScope (renameShadowed f)
     f (WhileStmt cond body) = WhileStmt <$> g cond <*> inNewScope (renameShadowed body)
@@ -163,15 +163,31 @@ renameShadowed (Loc loc stmt) = Loc loc <$> f stmt -- traceFunM "renameShadowed"
     f ReturnStmtVoid = return stmt
     --f x = scError ("Unhandled statement: "++show x)
 
+    -- Should only need to handle definitions that are allowed in local scope.
+    fDef loc (VarDef typ init) = do
+        typ <- fType loc typ
+        newInit <- case init of
+          Just x -> Just <$> g x
+          Nothing -> return Nothing
+        return (VarDef typ newInit)
+    fDef loc (TypeDef typ) = TypeDef <$> fType loc typ
+    fDef loc def = scError loc ("Unexpected local def "++ show def)
+
+    fType = foldTypeM f
+      where
+        f _ (TNamedType name) = TNamedType <$> getName name
+        f _ t = return t
+
+    getName name = do
+      existingVar <- gets (M.lookup name . nameMap)
+      case existingVar of
+        Just (_,name) -> return name
+        Nothing -> do
+          -- scWarn loc "WARNING: Use of undeclared variable"
+          return name
+
     g = everywhereM (mkM g_)
     g_ :: Functor m => MonadIO m => LocE -> SC m LocE
-    g_ (LocE loc expr) = case expr of
-      (EVarRef name) -> do
-        existingVar <- gets (M.lookup name . nameMap)
-        newName <- case existingVar of
-          Just (_,name) -> return name
-          Nothing -> do
-            -- scWarn loc "WARNING: Use of undeclared variable"
-            return name
-        return (LocE loc (EVarRef newName))
-      _ -> LocE loc <$> g expr
+    g_ (LocE loc expr) = LocE loc <$> case expr of
+      (EVarRef name) -> EVarRef <$> getName name
+      _ -> g expr

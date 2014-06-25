@@ -62,12 +62,15 @@ pRelationalExpression = pShiftExpression <**?> choice suffices
     suffix tok = flip <$> (EBinary <$> token tok) <*!> pRelationalExpression
 
 pShiftExpression = pAdditiveExpression -- TODO bitshifts
-pAdditiveExpression = pMultiplicativeExpression <**?> choice suffices
+pAdditiveExpression = pMultiplicativeExpression <**?> choice suffixes
   where
-    suffices = map suffix [Minus,Plus] ++ [failParse "Expected '+' or '.'"]
+    suffixes = map suffix [Minus,Plus] ++ [failParse "Expected '+' or '-'"]
     suffix tok = flip <$> (EBinary <$> token tok) <*!> pAdditiveExpression
 
-pMultiplicativeExpression = pCastExpression
+pMultiplicativeExpression = pCastExpression <**?> choice suffixes
+  where
+    suffixes = map suffix [Asterix,Division,Modulo] ++ [failParse "Expected '*' or '/'"]
+    suffix tok = flip <$> (EBinary <$> token tok) <*!> pAdditiveExpression
 pCastExpression = pUnaryExpression
 pUnaryExpression :: MParser LocE
 pUnaryExpression = choice

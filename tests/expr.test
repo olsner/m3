@@ -1,0 +1,41 @@
+./test_main.sh
+<<<
+return 3 * 2;
+>>>
+>>>2
+m3: [TC] tests/temp_test.m (line 6, column 8..13): Unhandled binary operator: `*'
+>>>= 1
+#>>>= 6
+
+./test_main.sh
+<<<
+return 3 * 2 + 1;
+>>>
+>>>2
+m3: [TC] tests/temp_test.m (line 6, column 8..17): Unhandled binary operator: `*'
+>>>= 1
+#>>>= 7
+
+./test_main.sh
+<<<
+// No clue what the problem is here?
+return 3 * 2 / 3;
+>>>
+Error in lexical analysis:
+"tests/temp_test.m" (line 7, column 15):
+unexpected " "
+expecting "*" or "/"
+>>>2
+>>>= 1
+#>>>= 2
+# TODO This also means lexer errors are going to the wrong place - stdout
+# instead of stderr.
+
+./test_main.sh
+<<<
+return 6 % 5;
+>>>
+>>>2
+m3: [TC] tests/temp_test.m (line 6, column 8..13): Unhandled binary operator: `%'
+>>>= 1
+

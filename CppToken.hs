@@ -57,6 +57,7 @@ data Tok =
     | Plus
     | Minus
     | Division
+    | Modulo
     
     -- Logic operators
     | ShortcutAnd
@@ -90,7 +91,7 @@ data Tok =
 
     deriving (Read, Eq, Ord, Data, Typeable)
 
-oneCharOperators = zip ";{}()[],.*&+-/!~|<>?:=" $
+oneCharOperators = zip ";{}()[],.*&+-/!~|<>?:=%" $
     [Semicolon
     ,OpenBrace
     ,CloseBrace
@@ -112,7 +113,8 @@ oneCharOperators = zip ";{}()[],.*&+-/!~|<>?:=" $
     ,GreaterThan
     ,QuestionMark
     ,SingleColon
-    ,Assignment]
+    ,Assignment
+    ,Modulo]
 
 multiCharOperators = postfixOperators++
     [("&&",ShortcutAnd)

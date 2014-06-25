@@ -45,3 +45,15 @@ return 0;
 >>>2
 m3: tests/temp_test.m (line 9, column 5..6): Redeclaration at same depth.
 >>>= 1
+
+./test.sh -
+<<<
+// Test definitions of global variables
+import lib::gmp;
+module temp_test;
+mpz tmp1, tmp2, acc, den, num;
+int main(int argc, [[const char]] argv) {
+	return 0;
+}
+>>>2
+>>>= 0

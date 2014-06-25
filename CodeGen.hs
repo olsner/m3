@@ -150,7 +150,8 @@ cgDef loc name local def = case def of
           Nothing -> "undef"
     tell ("@"++encodeName name++" = linker_private constant "++initVal++"\n")
   (VarDef t Nothing) -> do
-    tell ("@"++encodeName name++" = global linker_private "++encodeType t++" undef\n")
+    tell ("@"++encodeName name++" = linker_private global "++encodeType t++" undef\n")
+  -- TODO Globals with initializers
   (VarDef _ _) -> cgError loc ("Weird VarDef: "++show def)
   (TypeDef _) -> return ()
 

@@ -15,3 +15,15 @@ return 2;
 >>>2
 tests/temp_test.m (line 7, column 1): found `return' but expected end of file
 >>>= 1
+
+./test_main.sh std::io
+<<<
+// Escape sequences (more of a lexer test than parser)
+// Note that output must end with a newline for shelltest.
+printf("\ttab\nnewline\n");
+return 0;
+>>>
+	tab
+newline
+>>>2
+>>>= 0

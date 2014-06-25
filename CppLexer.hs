@@ -138,6 +138,7 @@ escapedChar q = choice [char '\\' >> anychar >>= unescape, satisfy (/= q)]
 unescape :: MonadPlus m => Char -> m Char
 unescape c = case c of
   'n' -> return '\n'
+  't' -> return '\t'
   '"' -> return c
   _ -> fail ("Unrecognized escaped character: '\\"++[c]++"'")
 

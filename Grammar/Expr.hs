@@ -69,8 +69,8 @@ pAdditiveExpression = pMultiplicativeExpression <**?> choice suffixes
 
 pMultiplicativeExpression = pCastExpression <**?> choice suffixes
   where
-    suffixes = map suffix [Asterix,Division,Modulo] ++ [failParse "Expected '*' or '/'"]
-    suffix tok = flip <$> (EBinary <$> token tok) <*!> pAdditiveExpression
+    suffixes = map suffix [Asterix,Division,Modulo] ++ [failParse "Expected '*', '/' or '%'"]
+    suffix tok = flip <$> (EBinary <$> token tok) <*!> pMultiplicativeExpression
 pCastExpression = pUnaryExpression
 pUnaryExpression :: MParser LocE
 pUnaryExpression = choice

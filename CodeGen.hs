@@ -354,6 +354,9 @@ getBinopCode t = case t of
   GreaterOrEqual -> cmpBinop t "sge"
   Plus -> arithBinop t "add"
   Minus -> arithBinop t "sub"
+  Asterix -> arithBinop t "mul"
+  Division -> arithBinop t "sdiv"
+  Modulo -> arithBinop t "srem"
   _ -> error ("getBinopCode: "++show t)
 
 cgAssignOp _ Assignment = \rv _lv -> return rv

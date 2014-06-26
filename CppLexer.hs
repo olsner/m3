@@ -58,7 +58,7 @@ file = catMaybes <$> many cppToken
 
 cppToken :: Lexer (Maybe Token)
 cppToken = choice
-	[comment
+	[try comment
 	,operator
 	,identifierOrReserved
 	,literal

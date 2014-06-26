@@ -304,16 +304,21 @@ checkCast _ _ = False
 
 relopRule _ x = return (TBool, x)
 -- FIXME This only handles pointer arithmetic where the *right-hand* argument is a pointer, not the flipped one...
-additiveRule _ TInt = return (TInt,TInt)
-additiveRule _ TChar = return (TChar,TChar)
 additiveRule _ (TPtr t) = return (TPtr t, TInt)
-additiveRule loc other = tcError loc ("additiveRule: unhandled type "++show other)
+additiveRule loc t = arithmeticRule loc t
+
+arithmeticRule _ TInt = return (TInt,TInt)
+arithmeticRule _ TChar = return (TChar,TChar)
+arithmeticRule loc other = tcError loc ("arithmeticRule: unhandled type "++show other)
 
 binopTypeRule Equal = relopRule
 binopTypeRule LessThan = relopRule
 binopTypeRule GreaterOrEqual = relopRule
 binopTypeRule Plus = additiveRule
 binopTypeRule Minus = additiveRule
+binopTypeRule Asterix = arithmeticRule
+binopTypeRule Division = arithmeticRule
+binopTypeRule Modulo = arithmeticRule
 binopTypeRule other = \loc _ -> tcError loc ("Unhandled binary operator: "++show other)
 
 tcUnary LogicalNot = const (tcExprAsType TBool)

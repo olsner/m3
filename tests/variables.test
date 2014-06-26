@@ -57,3 +57,15 @@ int main(int argc, [[const char]] argv) {
 }
 >>>2
 >>>= 0
+
+./test.sh -
+<<<
+// Test definitions and use of global variables
+// Something is broken with the local-alias for global variables.
+import lib::gmp;
+module temp_test;
+mpz tmp1, tmp2, acc, den, num;
+int main(int argc, [[const char]] argv) {
+	return tmp1.size; // Just some field
+}
+>>>= 1

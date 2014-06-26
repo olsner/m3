@@ -26,6 +26,17 @@ locE p = (\(Loc l e) -> LocE l e) <$> addLocation p
 (<**?>) :: MParser LocE -> MParser (LocE -> Expr LocE) -> MParser LocE
 p <**?> maybefp = locE (p <**> (fromMaybe unLocE <$> optional maybefp))
 
+leftAssoc :: MParser a -> MParser b -> (a -> b -> a -> a) -> MParser a
+leftAssoc lower op fun = lower <**> rest
+  where
+    rest = fromMaybe id <$> optional tail
+    tail = (\op mid rest left -> rest (fun left op mid)) <$> op <*> lower <*> rest
+
+leftAssocBinops lower tokens = leftAssoc lower ops fun
+  where
+    ops = choice $ map (addLocation . token) tokens ++ [failParse ("Expected one of "++show tokens)]
+    fun left (Loc l t) right = LocE l (EBinary t left right)
+
 pExpressionList :: MParser [LocE]
 pExpressionList = listOf pAssignmentExpression
 
@@ -40,37 +51,23 @@ pAssignmentExpression = pLogicalOrExpression <**?> choice [pConditionalSuffix,su
   where
     suffix = flip <$> (EAssignment <$> pAssignmentOperator) <*> pAssignmentExpression
 
--- TODO Generalize these into:
---  * left-hand ("lower") expression
---  * list of operators that can follow
---  * function to apply to said list
-
 pConditionalSuffix = token QuestionMark *!> ((\t f cond -> EConditional cond t f) <$> pExpression <* token SingleColon <*> pAssignmentExpression)
 
 pLogicalOrExpression = {- skip a few logical operators -} pEqualityExpression
 
-pEqualityExpression = pRelationalExpression <**?> suffix
-  where
-    -- FIXME Does this give the right grouping?
-    suffix = flip <$> (EBinary <$> (token Equal <|> token NotEqual)) <*!> pEqualityExpression
+pEqualityExpression = leftAssocBinops pRelationalExpression $
+  [Equal, NotEqual]
 
-pRelationalExpression = pShiftExpression <**?> choice suffices
-  where
-    suffices = map suffix [LessThan,GreaterThan,LessOrEqual,GreaterOrEqual]
-    -- FIXME This gives the wrong grouping - a<(b<c) instead of (a<b)<c
-    -- How fix?
-    suffix tok = flip <$> (EBinary <$> token tok) <*!> pRelationalExpression
+pRelationalExpression = leftAssocBinops pShiftExpression $
+  [LessThan,GreaterThan,LessOrEqual,GreaterOrEqual]
 
 pShiftExpression = pAdditiveExpression -- TODO bitshifts
-pAdditiveExpression = pMultiplicativeExpression <**?> choice suffixes
-  where
-    suffixes = map suffix [Minus,Plus] ++ [failParse "Expected '+' or '-'"]
-    suffix tok = flip <$> (EBinary <$> token tok) <*!> pAdditiveExpression
 
-pMultiplicativeExpression = pCastExpression <**?> choice suffixes
-  where
-    suffixes = map suffix [Asterix,Division,Modulo] ++ [failParse "Expected '*', '/' or '%'"]
-    suffix tok = flip <$> (EBinary <$> token tok) <*!> pMultiplicativeExpression
+pAdditiveExpression = leftAssocBinops pMultiplicativeExpression $
+  [Minus,Plus]
+pMultiplicativeExpression = leftAssocBinops pCastExpression $
+  [Asterix,Division,Modulo]
+
 pCastExpression = pUnaryExpression
 pUnaryExpression :: MParser LocE
 pUnaryExpression = choice

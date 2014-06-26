@@ -23,7 +23,7 @@ parse path = do
   let res = lexCpp path input
   case res of
     Left err -> do
-      putStrLn "Error in lexical analysis:" >> print err
+      hPutStrLn stderr "Error in lexical analysis:" >> print err
       exitFailure
     Right tokens ->
       case runParser pUnit initialParserState tokens of

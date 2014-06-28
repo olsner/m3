@@ -30,7 +30,7 @@ leftAssoc :: MParser a -> MParser b -> (a -> b -> a -> a) -> MParser a
 leftAssoc lower op fun = lower <**> rest
   where
     rest = fromMaybe id <$> optional tail
-    tail = (\op mid rest left -> rest (fun left op mid)) <$> op <*> lower <*> rest
+    tail = (\op mid rest left -> rest (fun left op mid)) <$> op <*!> lower <*!> rest
 
 leftAssocBinops lower tokens = leftAssoc lower ops fun
   where

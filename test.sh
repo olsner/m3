@@ -19,4 +19,6 @@ shift
 dist/build/m3/m3 ${testdir:+-I${testdir} -o${outdir}} ${mod}
 file=${outdir}/${mod/::/__}
 llvm-as ${file}.ll
-lli ${file}.bc "$@"
+llc -o ${file}.s ${file}.bc
+gcc -o ${file} ${file}.s -lgmp
+${file} "$@"

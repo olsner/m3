@@ -1,4 +1,5 @@
 import lib::gmp;
+import std::io;
 import std::lib;
 
 module pidigits;

@@ -91,7 +91,7 @@ type FormalParams = [FormalParam]
 data Def e =
     ModuleDef [LocDecl e]
   | FunctionDef { funReturnType :: Type, funArgs :: FormalParams, funCode :: LocStatement e }
-  | ExternalFunction { funLinkage :: Maybe String, funReturnType :: Type, funArgs :: FormalParams }
+  | ExternalFunction { funLinkage :: Maybe String, funReturnType :: Type, funArgs :: FormalParams, funExternalName :: Name }
   | VarDef Type (Maybe e)
   | TypeDef Type
 

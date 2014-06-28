@@ -9,6 +9,8 @@ module Grammar
 
 import Control.Applicative
 
+import Data.Maybe
+
 import AST
 import CppToken
 
@@ -36,8 +38,9 @@ pImport = keyword "import" *> pName <* token Semicolon
 pFunction = (\ret nm params code -> Decl nm (FunctionDef ret params code)) <$>
     pType <*> pName <*> pFormalParamList <*!> addLocation pCompoundStatement
 pExternalFunction = keyword "extern" *!> (
-    (\linkage ret nm params -> Decl nm (ExternalFunction (fmap snd linkage) ret params))
+    (\linkage ret nm params extname -> Decl nm (ExternalFunction (fmap snd linkage) ret params (fromMaybe nm extname)))
       <$> optional string <*> pType <*> pName <*> pFormalParamList
+      <*> optional (token Assignment *!> pStringName)
       <* token Semicolon)
 
 pFormalParamList = inParens (listOf $ choice [pFormalParam, pVarargParam])

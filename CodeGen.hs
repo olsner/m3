@@ -155,9 +155,9 @@ cgDef loc name local def = case def of
       TVoid -> line "ret void"
       _ -> line "unreachable"
     tell "}\n\n"
-  (ExternalFunction _linkage ret args) -> do
+  (ExternalFunction _linkage ret args extname) -> do
     tell ("declare "++encodeType ret++" @"++encodeName local++"("++intercalate "," (map (encodeFormal False) args)++")\n")
-    tell ("@"++encodeName name++" = alias linker_private "++encodeType (TPtr (TFunction ret args))++" @"++encodeName local++"\n")
+    tell ("@"++encodeName name++" = alias linker_private "++encodeType (TPtr (TFunction ret args))++" @"++encodeName extname++"\n")
   (VarDef (TConst _) e) -> do
     res <- runCGM [] (maybeM cgTypedE e)
     let initVal = case res of

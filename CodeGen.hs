@@ -351,6 +351,7 @@ getBinopCode t = case t of
   Equal -> cmpBinop t "eq"
   NotEqual -> cmpBinop t "ne"
   LessThan -> cmpBinop t "slt"
+  GreaterThan -> cmpBinop t "sgt"
   GreaterOrEqual -> cmpBinop t "sge"
   Plus -> arithBinop t "add"
   Minus -> arithBinop t "sub"

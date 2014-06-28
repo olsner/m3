@@ -7,6 +7,7 @@ module CppToken
   ,oneCharOperators
   ,multiCharOperators
   ,postfixOperators
+  ,prefixOperators
   ,unaryOperators
 
   ,reservedWords
@@ -136,6 +137,8 @@ multiCharOperators = postfixOperators++
 postfixOperators =
     [("--",Decrement)
     ,("++",Increment)]
+
+prefixOperators = postfixOperators
 
 unaryOperators =
     [Asterix, Ampersand, Plus, Minus, LogicalNot, Complement]

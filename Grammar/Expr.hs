@@ -71,8 +71,7 @@ pMultiplicativeExpression = leftAssocBinops pCastExpression $
 pCastExpression = pUnaryExpression
 pUnaryExpression :: MParser LocE
 pUnaryExpression = choice
-  [error "prefix increment, unimpl" <$ token Increment *> pCastExpression
-  ,error "prefix decrement, unimpl" <$ token Decrement *> pCastExpression
+  [locE (EPrefix <$> prefixOperator <*> pCastExpression)
   ,locE (pUnaryOperator <*> pCastExpression)
   ,pPostfixExpression
   ] -- should probably include sizeof, the internal support for it is likely to be required anyway
@@ -105,7 +104,7 @@ pAssignmentOperator = choice . map token $
   ] -- TODO Also handle operator-assignments, once lexer and token definitions have it.
 
 pUnaryOperator :: MParser (LocE -> Expr LocE)
-pUnaryOperator = eUnary <$> (choice (map token unaryOperators) <|> failParse "Expected unary operator")
+pUnaryOperator = eUnary <$> choice (map token unaryOperators)
   where
     eUnary (_,Asterix) = EDeref
     eUnary op = EUnary op

@@ -48,3 +48,20 @@ return 3;
 >>>
 >>>2
 >>>= 0
+
+./test_main.sh
+<<<
+int i = 1;
+return ++i;
+>>>
+>>>2
+>>>= 2
+
+./test_main.sh
+<<<
+int i = 5;
+return --i;
+>>>
+>>>2
+>>>= 4
+

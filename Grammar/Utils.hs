@@ -48,6 +48,7 @@ fromCharTok (CharTok c) = Just c
 fromCharTok _ = Nothing
 
 postfixOperator = choice (map (token.snd) postfixOperators)
+prefixOperator = choice (map (token.snd) prefixOperators)
 
 inBraces p = token OpenBrace *> p <* token CloseBrace
 inBrackets p = token OpenBracket *> p <* token CloseBracket

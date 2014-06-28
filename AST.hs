@@ -143,7 +143,8 @@ data Expr e =
   -- TODO Use Tok instead of Token - expressions have associated location info anyway.
   | EBinary Token e e
   | EUnary Token e
-  | EPostfix Token e
+  | EPostfix Token e -- ^ postfix ++ and --
+  | EPrefix Token e -- ^ prefix ++ and --
   | EConditional e e e -- ^ ?: expressions: condition, true-value, false-value
   | EAssignment Token e e -- FIXME EBinary with assignment operator...
   | EDeref e -- ^ Dereferencing of a pointer. Doubles as lvalue-to-rvalue conversion, inserted by type checking. All variables are pointers, surprisingly.

@@ -226,6 +226,12 @@ tcParams (VarargParam:_)        _      = tcError dummyLocation "Vararg param in 
 tcParams []                     []     = return []
 tcParams formal                 actual = tcError dummyLocation ("Argument number mismatch. Remaining formals: "++show formal++", actuals: "++show actual)
 
+tcLValueExpr loc e = do
+  lv@(TypedE _ typ ptrExpr) <- tcExpr e
+  case ptrExpr of
+    (EDeref _) -> return lv
+    _ -> tcError loc ("Not an lvalue: "++show e)
+
 tcExpr :: Functor m => MonadIO m => LocE -> TC m TypedE
 tcExpr (LocE loc e) = traceM ("tcExpr "++show loc++" "++show e) $ case e of
   (EBool b) -> return (typedE TBool (EBool b))
@@ -248,7 +254,7 @@ tcExpr (LocE loc e) = traceM ("tcExpr "++show loc++" "++show e) $ case e of
         return (typedE retT (EFunCall fun_ args_))
       other -> tcError loc ("Function call on "++show other++" of non-function type "++show typ)
   (EAssignment op lval rval) -> do
-    lv@(TypedE _ lvT (EDeref _)) <- tcExpr lval
+    lv@(TypedE _ lvT _) <- tcLValueExpr loc lval
     rv <- tcExprAsType lvT rval
     return (typedE lvT (EAssignment op lv rv))
   (EBinary op x y) -> do
@@ -277,12 +283,11 @@ tcExpr (LocE loc e) = traceM ("tcExpr "++show loc++" "++show e) $ case e of
       EDeref struct -> return (typedE ft (EDeref (typedE (TPtr ft) (EFieldAccess field struct))))
       struct -> return (typedE ft (EFieldAccess field (TypedE structLoc typ struct)))
   (EPostfix op e) -> do
-    -- must be an lvalue
-    e@(TypedE _ typ ptrExpr) <- tcExpr e
-    case ptrExpr of
-      (EDeref _) -> return ()
-      _ -> tcError loc ("Invalid postfix operator on non-lvalue "++show e)
+    e@(TypedE _ typ _) <- tcLValueExpr loc e
     return (typedE typ (EPostfix op e))
+  (EPrefix op e) -> do
+    te@(TypedE _ typ _) <- tcLValueExpr loc e
+    return (typedE typ (EPrefix op te))
   (EDeref ptr) -> do
     e@(TypedE _ (TPtr typ) _) <- tcExpr ptr
     return (typedE typ (EDeref e))

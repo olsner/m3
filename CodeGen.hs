@@ -110,7 +110,7 @@ cgUnit (Unit _ decl@(Loc _ (Decl name _))) = do
   tell ("; End of unit: "++show name++"\n\n")
 
 cgDecl name (Loc loc (Decl local def)) =
-  cgDef loc (qualifyName name local) local def
+  cgDef loc (qualifyName name local) def
 
 encodeType :: Type -> String
 encodeType (TPtr (TConst t)) = encodeType (TPtr t)
@@ -140,7 +140,7 @@ encodeFormal True (FormalParam typ (Just name)) = encodeType typ++" %"++encodeNa
 encodeFormal _ (FormalParam typ _) = encodeType typ
 encodeFormal _ VarargParam = "..."
 
-cgDef loc name local def = case def of
+cgDef loc name def = case def of
   (ModuleDef decls) -> mapM_ (cgDecl name) decls
   (FunctionDef retT args code) -> runCGM args $ do
     tell "define linker_private "
@@ -332,6 +332,13 @@ cgExpr loc typ e = case e of
     res <- cgPostfixOp loc op typ val
     store res lv
     return val
+  (EPrefix (_,op) (TypedE _ _ (EDeref lvExpr))) -> do
+    printloc ("postfix "++show op)
+    lv <- cgTypedE lvExpr
+    val <- withFresh typ (=% load lv)
+    res <- cgPostfixOp loc op typ val
+    store res lv
+    return res
   (EUnary op val) -> do
     v <- cgTypedE val
     printloc ("unary "++show (snd op))

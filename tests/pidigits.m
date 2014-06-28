@@ -44,10 +44,7 @@ int main(int argc, [[const char]] argv) {
 
    i = k = 0;
    while (i < n) {
-      //printf("i=%d n=%d\n", i, n);
-      // FIXME Should be next_term(++k)
-      k++;
-      next_term(k);
+      next_term(++k);
       if (mpz_cmp(num, acc) > 0)
          continue;
 
@@ -56,10 +53,7 @@ int main(int argc, [[const char]] argv) {
          continue;
 
       putchar('0' + d);
-      // FIXME Should be if (++i % 10 == 0), but prefix-increment is not
-      // implemented. (I think it parses as +(+i).)
-      i++;
-      if (i % 10 == 0)
+      if (++i % 10 == 0)
          printf("\t:%u\n", i);
       eliminate_digit(d);
    }

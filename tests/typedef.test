@@ -13,7 +13,7 @@ return i-7;
 // No semicolon: should be parse failure
 type foo = int
 >>>2
-tests/temp_test.m (line 8, column 1): found `}' but expected `;'
+temp_test.m (line 8, column 1): found `}' but expected `;'
 >>>= 1
 
 ./test.sh toplevel_typedef1

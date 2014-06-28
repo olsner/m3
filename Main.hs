@@ -2,6 +2,7 @@ import Control.Applicative
 import Control.Monad.Reader
 import Control.Monad.State
 
+import Data.List
 import Data.Map (Map)
 import qualified Data.Map as M
 
@@ -20,7 +21,9 @@ import Grammar (pUnit, pName, runParser, initialParserState)
 
 parse path = do
   input <- readFile path
-  let res = lexCpp path input
+  -- We use only the filename so that tests can run in a temporary directory
+  -- but still produce predictable error messages.
+  let res = lexCpp (takeFileName path) input
   case res of
     Left err -> do
       hPutStrLn stderr "Error in lexical analysis:" >> print err
@@ -52,13 +55,14 @@ tryImportModule name path = do
   e <- doesFileExist modPath
   if e then Just <$> parse modPath else return Nothing
 
-includePath = ["stdlib", "tests"]
+defaultIncludePath = ["stdlib", "tests"]
 
 type ModMap = Map Name (Unit LocE)
-type ModT = StateT ModMap
+type ModT m = ReaderT Options (StateT ModMap m)
 type Mod = ModT IO
 
-runMod = flip execStateT
+runMod :: Options -> ModMap -> Mod a -> IO ModMap
+runMod opts mods m = execStateT (runReaderT m opts) mods
 
 ifNotLoaded name m = gets (M.lookup name) >>= \res -> case res of
   Just modul -> return modul
@@ -66,7 +70,8 @@ ifNotLoaded name m = gets (M.lookup name) >>= \res -> case res of
 
 processImport :: Name -> Mod (Unit LocE)
 processImport name = ifNotLoaded name $ do
-  res <- liftIO $ firstM (tryImportModule name) includePath
+  inc <- asks includePath
+  res <- liftIO $ firstM (tryImportModule name) inc
   case res of
     Just unit -> do
       mapM_ processImport (unitImports unit)
@@ -80,19 +85,37 @@ parseName name = case lexCpp "cmd-line" name of
     Right (name,_) -> return name
  
 
-main = mapM_ (doMain <=< parseName) =<< getArgs
+data Options = Options { includePath :: [FilePath], outputPath :: FilePath }
+defaultOptions = Options
+  { includePath = defaultIncludePath
+  , outputPath = "out"
+  }
 
-doMain name = do
-  mods <- runMod M.empty (processImport name)
-  process name mods
+parseArgs :: [String] -> (Options, [String])
+parseArgs args = (opts, mods)
+  where
+    opts = foldr addOption defaultOptions optargs
+    addOption ('-':'I':path) opts =
+      opts { includePath = path : includePath opts }
+    addOption ('-':'o':path) opts = opts { outputPath = path }
+    (optargs,mods) = partition ((== '-').head) args
+
+main = do
+  (opts,mods) <- parseArgs <$> getArgs
+  mapM_ (doMain opts <=< parseName) mods
+
+doMain opts name = do
+  mods <- runMod opts M.empty (processImport name)
+  process opts name mods
 
 mapMapM f m = M.fromList <$> mapM (secondM f) (M.toList m)
   where
     secondM f (a,b) = f b >>= \b' -> return (a,b')
 
-process :: Name -> ModMap -> IO ()
-process name mods'' = do
+process :: Options -> Name -> ModMap -> IO ()
+process opts name mods'' = do
   mods' <- mapMapM scopecheck mods''
   mods <- runReaderT (typecheck name) mods'
+  let outfile = outputPath opts </> encodeName name ++ ".ll"
   --mapM_ print (M.toList mods)
-  runReaderT (printLLVM name) mods
+  runReaderT (printLLVM outfile name) mods

@@ -1,7 +1,5 @@
 #!/bin/bash
 
-mod=temp_test
-rm tests/${mod}.m
 (
 while [ $# -gt 0 ]; do
 	echo "import $1;"
@@ -9,13 +7,11 @@ while [ $# -gt 0 ]; do
 done
 cat <<EOF
 
-module ${mod};
+module temp_test;
 
 int main(int argc, [const [const char]] argv)
 {
 EOF
 cat
 echo '}'
-) > tests/${mod}.m
-
-exec `dirname $0`/test.sh ${mod}
+) | `dirname $0`/test.sh -

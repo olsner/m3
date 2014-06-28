@@ -84,8 +84,8 @@ mapMapM f = liftM M.fromList . mapM (\(k,v) -> (,) k `liftM` f v) . M.toList
 stringfindUnits :: Map Name (Unit TypedE) -> (Map Name (Unit TypedE), Map String Int)
 stringfindUnits = runStringFinder . mapMapM getStrings
 
-printLLVM :: (Functor m, MonadIO m, MonadReader (Map Name (Unit TypedE)) m) => Name -> m ()
-printLLVM name = do
+printLLVM :: (Functor m, MonadIO m, MonadReader (Map Name (Unit TypedE)) m) => FilePath -> Name -> m ()
+printLLVM outfile name = do
   output <- execWriterT $ do
     (units, stringMap) <- asks stringfindUnits
     local (const units) $ do
@@ -93,7 +93,7 @@ printLLVM name = do
       writeStrings stringMap
       mapM_ (cgUnit . fromJust . flip M.lookup units) (importedUnits units name)
       cgMain name
-  liftIO (writeFile ("out/"++encodeName name ++ ".ll") output)
+  liftIO (writeFile outfile output)
 
 cgMain mainModule = tell $
     "define external i32 @main(i32, i8**) {\n"++

@@ -32,7 +32,7 @@ void next_term(ui k) {
 }
 
 int main(int argc, [[const char]] argv) {
-   ui d, k, i;
+   ui k, i;
    int n = atoi(argv[1]);
 
    mpz_init(tmp1);
@@ -44,16 +44,22 @@ int main(int argc, [[const char]] argv) {
 
    i = k = 0;
    while (i < n) {
-      next_term(++k);
+      //printf("i=%d n=%d\n", i, n);
+      // FIXME Should be next_term(++k)
+      k++;
+      next_term(k);
       if (mpz_cmp(num, acc) > 0)
          continue;
 
-      d = extract_digit(3);
+      int d = extract_digit(3);
       if (d != extract_digit(4))
          continue;
 
       putchar('0' + d);
-      if (++i % 10 == 0)
+      // FIXME Should be if (++i % 10 == 0), but prefix-increment is not
+      // implemented. (I think it parses as +(+i).)
+      i++;
+      if (i % 10 == 0)
          printf("\t:%u\n", i);
       eliminate_digit(d);
    }

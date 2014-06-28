@@ -150,6 +150,7 @@ tcDef loc name local def = traceM ("tcDef ("++show loc++") "++show name++": "++s
     typ <- tcType loc typ
     let unconst (TConst t) = t; unconst t = t
     addBinding name (Var Global (unconst typ))
+    addBinding local (Alias name)
     VarDef typ <$> maybeM (tcExprAsType typ) e
   (TypeDef typ) -> do
     typ <- tcType loc typ

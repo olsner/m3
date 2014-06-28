@@ -83,7 +83,7 @@ withDecl name (Loc loc decl@(Decl local def)) = traceM ("withDecl "++show decl++
 withDef _loc name local def = traceM (printf "withDef %s local %s: %s" (show name) (show local) (show def)) . case def of
   (ModuleDef decls) -> withDecls name decls
   (FunctionDef retT args _) -> inScope name (Var NonConst (TFunction retT args)) . inScope local (Alias name)
-  (ExternalFunction _ ret args) -> inScope name (Var NonConst (TFunction ret args)) . inScope local (Alias name)
+  (ExternalFunction _ ret args _) -> inScope name (Var NonConst (TFunction ret args)) . inScope local (Alias name)
   (VarDef typ _) -> inScope name (Var Global typ) . inScope local (Alias name)
   (TypeDef typ) -> inScope name (Type typ) . inScope local (Alias name)
 
@@ -141,11 +141,11 @@ tcDef loc name local def = traceM ("tcDef ("++show loc++") "++show name++": "++s
     addBinding name (Var NonConst funType)
     addBinding local (Alias name)
     FunctionDef retT args <$> foldr withArg (tcStmt retT args code) args
-  (ExternalFunction linkage ret args) -> do
+  (ExternalFunction linkage ret args extname) -> do
     funType@(TFunction ret args) <- tcType loc (TFunction ret args)
     addBinding name (Var NonConst funType)
     addBinding local (Alias name)
-    return (ExternalFunction linkage ret args)
+    return (ExternalFunction linkage ret args extname)
   (VarDef typ e) -> do
     typ <- tcType loc typ
     let unconst (TConst t) = t; unconst t = t

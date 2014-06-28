@@ -314,6 +314,7 @@ arithmeticRule loc other = tcError loc ("arithmeticRule: unhandled type "++show 
 
 binopTypeRule Equal = relopRule
 binopTypeRule LessThan = relopRule
+binopTypeRule GreaterThan = relopRule
 binopTypeRule GreaterOrEqual = relopRule
 binopTypeRule Plus = additiveRule
 binopTypeRule Minus = additiveRule

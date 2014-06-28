@@ -1,0 +1,23 @@
+./test_main.sh
+<<<
+while (true) {
+	break;
+	return 2;
+}
+return 0;
+>>>
+>>>2
+>>>= 0
+
+./test_main.sh
+<<<
+int n = 1;
+while (n > 0) {
+	n = 0;
+	continue;
+	return 2;
+}
+return 0;
+>>>
+>>>2
+>>>= 0

@@ -70,13 +70,15 @@ data Show e => Statement e =
   | ReturnStmtVoid
   | ExprStmt e
   -- Special entry for *parsing* variable declarations - should be transformed
-  -- into nested CompoundStmt's after checking for conflicting variables as part of the
-  -- scopechecking.
+  -- into nested CompoundStmt's after checking for conflicting variables as
+  -- part of the scopechecking.
   | VarDecl [LocDecl e]
   | TypDecl Name Type
   | CompoundStmt [LocDecl e] [LocStatement e]
   | IfStmt e (LocStatement e) (LocStatement e)
   | WhileStmt e (LocStatement e)
+  | BreakStmt
+  | ContinueStmt
   deriving (Show,Eq,Data,Typeable)
 
 data Decl e = Decl Name (Def e) deriving (Show,Eq,Data,Typeable)

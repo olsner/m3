@@ -142,10 +142,12 @@ unaryOperators =
 
 reservedWords =
     ["bool"
+    ,"break"
     ,"cast"
     ,"char"
     ,"class"
     ,"const"
+    ,"continue"
     ,"double"
     ,"else"
     ,"enum"

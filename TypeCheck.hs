@@ -198,7 +198,9 @@ tcStmt ret args (Loc loc stmt) = traceM ("tcStmt "++show stmt) $ Loc loc <$> cas
   CompoundStmt vars xs    -> inScopeVars vars (\vars' -> CompoundStmt vars' <$> mapM (tcStmt ret args) xs)
   IfStmt cond t f -> IfStmt <$> tcExprAsType TBool cond <*> tcStmt ret args t <*> tcStmt ret args f
   WhileStmt cond body -> WhileStmt <$> tcExprAsType TBool cond <*> tcStmt ret args body
-  other -> tcError loc ("Unknown statement "++show other)
+  BreakStmt -> return BreakStmt
+  ContinueStmt -> return ContinueStmt
+  other -> tcError loc ("tcStmt: Unknown statement "++show other)
 
 -- traceShowRes str x = trace str $ trace (str++show x) x
 

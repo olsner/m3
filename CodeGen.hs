@@ -17,7 +17,7 @@ import qualified Data.Set as S-}
 import Data.Map (Map)
 import qualified Data.Map as M
 
-import Data.Generics hiding (Unit)
+import Data.Generics
 
 import Text.Printf
 
@@ -30,7 +30,9 @@ import TypeCheck (maybeM)
 data ValueKind = Variable | ConstExpr | AllocaPtr deriving Show
 data Value = Value { valueKind :: ValueKind, valueType :: Type, valueTextNoType :: String } deriving Show
 type Locals = Map String Value
-type CGMT m = CounterT Int (StateT Locals (WriterT String m))
+data Loop = Loop { breakLabel :: String, continueLabel :: String }
+data CGState = CGState { locals :: Locals, loops :: [Loop] }
+type CGMT m = CounterT Int (StateT CGState (WriterT String m))
 type CGM a = forall m . (Functor m, MonadIO m) => CGMT m a
 
 cgError :: Location -> String -> m a
@@ -42,23 +44,36 @@ fresh = printf "%%t%d" <$> getAndInc
 freshLabel :: CGM String
 freshLabel = printf ".label%d" <$> getAndInc
 
+modifyLocals :: Monad m => (Locals -> Locals) -> CGMT m ()
+modifyLocals f = modify (\s -> s { locals = f (locals s) })
+
 withLocal :: MonadIO m => Name -> Value -> CGMT m a -> CGMT m a
 withLocal name val m = do
   s <- get
-  modify (M.insert (encodeName name) val)
+  modifyLocals (M.insert (encodeName name) val)
   r <- m
   put s
   return r
+inLoop break cont m = do
+  s <- get
+  modify (\s -> s { loops = Loop break cont : loops s })
+  r <- m
+  put s
+  return r
+
 getLocal :: Name -> CGM (Maybe Value)
-getLocal name = gets (M.lookup (encodeName name))
+getLocal name = gets (M.lookup (encodeName name) . locals)
 
 mkValue :: ValueKind -> Type -> String -> Value
 mkValue k typ s = Value k typ s
 valueText v = encodeType (valueType v)++' ':valueTextNoType v
 
 runCGM :: (Functor m, Monad m) => FormalParams -> CGMT m a -> WriterT String m a
-runCGM args = fmap fst . flip runStateT (M.fromList $ concatMap f args) . runCounterT 0
+runCGM args = fmap fst . flip runStateT (initialState args) . runCounterT 0
   where
+    initialState args = CGState {
+      locals = M.fromList $ concatMap f args,
+      loops = [] }
     f (FormalParam typ (Just name)) = [(nm, mkValue ConstExpr typ ('%':nm))] where nm = encodeName name
     f _ = []
 
@@ -240,11 +255,13 @@ cgStmt (Loc loc stmt) = case stmt of
       brIf c start end
     label start $ do
       locComment "WhileStmt body" loc
-      cgStmt body
+      inLoop end startCond $ cgStmt body
       locComment "WhileStmt end" loc
       br startCond
     label end (return ())
-  --other -> tell ("; UNIMPL!!! "++show other++"\n")
+  BreakStmt -> br =<< gets (breakLabel . head . loops)
+  ContinueStmt -> br =<< gets (continueLabel . head . loops)
+  --_ -> cgError loc ("cgStmt: Unhandled statement "++show stmt)
 
 withFresh typ m = fresh >>= \r -> let v = mkValue Variable typ r in v <$ m v
 

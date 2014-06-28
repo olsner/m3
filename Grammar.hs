@@ -56,6 +56,8 @@ pStatement = addLocation $ choice
   ,pCompoundStatement
   ,keyword "if" *!> (IfStmt <$> inParens pExpression <*> pStatement <*> pElse)
   ,keyword "while" *!> (WhileStmt <$> inParens pExpression <*> pStatement)
+  ,BreakStmt <$ keyword "break"
+  ,ContinueStmt <$ keyword "continue"
   ] <|> failParse "Out of luck in pStatement"
 
 pVarDecl f = genVarDecl f (optional pVarInitializer)

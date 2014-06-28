@@ -94,7 +94,9 @@ preCheck (Loc loc stmt) = Loc loc <$> f stmt -- traceFunM "preCheck" f
     f x@(TypDecl name _) = checkName loc name >> return x
     f x@(ExprStmt _) = return x
     f x@(ReturnStmt _) = return x
-    f EmptyStmt = return EmptyStmt
+    f x@EmptyStmt = return x
+    f x@BreakStmt = return x
+    f x@ContinueStmt = return x
     f x = scError loc ("Unknown statement in scope check: "++show x)
 
     checkName loc name = do
@@ -139,10 +141,9 @@ convertVarDecls (Loc loc stmt) k = case stmt of
 
 
 renameShadowed :: Functor m => MonadIO m => LocStatement LocE -> SC m (LocStatement LocE)
-renameShadowed (Loc loc stmt) = Loc loc <$> f stmt -- traceFunM "renameShadowed" f
-  where
-    f :: Functor m => MonadIO m => Statement LocE -> SC m (Statement LocE)
-    f (CompoundStmt vars stmts) = inNewScope $ do
+renameShadowed (Loc loc stmt) = Loc loc <$>
+  {- traceFunM "renameShadowed" -} case stmt of
+    (CompoundStmt vars stmts) -> inNewScope $ do
       vars' <- forM vars $ \(Loc loc (Decl name def)) -> do
         --traceIO =<< gets (show . used)
         exists <- gets (S.member name . used)
@@ -153,16 +154,18 @@ renameShadowed (Loc loc stmt) = Loc loc <$> f stmt -- traceFunM "renameShadowed"
         -- TODO Make a testcase for shadowed-renaming in initializers
         return (Loc loc (Decl newName newDef))
       CompoundStmt vars' <$> mapM renameShadowed stmts
-    f (IfStmt cond t f) = IfStmt <$> g cond <*> inNewScope (renameShadowed t) <*> inNewScope (renameShadowed f)
-    f (WhileStmt cond body) = WhileStmt <$> g cond <*> inNewScope (renameShadowed body)
-    f (VarDecl _) = scError loc "VarDecl left over from rewrite step!"
-    f (TypDecl _ _) = scError loc "TypDecl left over from rewrite step!"
-    f (ExprStmt e) = ExprStmt <$> g e
-    f (ReturnStmt e) = ReturnStmt <$> g e
-    f EmptyStmt = return stmt
-    f ReturnStmtVoid = return stmt
+    (IfStmt cond t f) -> IfStmt <$> g cond <*> inNewScope (renameShadowed t) <*> inNewScope (renameShadowed f)
+    (WhileStmt cond body) -> WhileStmt <$> g cond <*> inNewScope (renameShadowed body)
+    (VarDecl _) -> scError loc "VarDecl left over from rewrite step!"
+    (TypDecl _ _) -> scError loc "TypDecl left over from rewrite step!"
+    (ExprStmt e) -> ExprStmt <$> g e
+    (ReturnStmt e) -> ReturnStmt <$> g e
+    EmptyStmt -> return stmt
+    ReturnStmtVoid -> return stmt
+    BreakStmt -> return stmt
+    ContinueStmt -> return stmt
     --f x = scError ("Unhandled statement: "++show x)
-
+  where
     -- Should only need to handle definitions that are allowed in local scope.
     fDef loc (VarDef typ init) = do
         typ <- fType loc typ

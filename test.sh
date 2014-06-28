@@ -2,9 +2,12 @@
 
 set -e
 
-if [ "$1" = "-" ]; then
 testdir=`mktemp -d` || exit 1
 trap "rm -fr $testdir" exit
+outdir=$testdir/out
+mkdir $outdir
+
+if [ "$1" = "-" ]; then
 outdir=${testdir}
 mod=temp_test
 
@@ -12,7 +15,6 @@ cat > ${testdir}/${mod}.m
 else
 mod="$1"
 fi
-outdir=${outdir-out}
 
 shift
 

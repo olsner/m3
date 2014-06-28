@@ -315,6 +315,7 @@ arithmeticRule _ TChar = return (TChar,TChar)
 arithmeticRule loc other = tcError loc ("arithmeticRule: unhandled type "++show other)
 
 binopTypeRule Equal = relopRule
+binopTypeRule NotEqual = relopRule
 binopTypeRule LessThan = relopRule
 binopTypeRule GreaterThan = relopRule
 binopTypeRule GreaterOrEqual = relopRule

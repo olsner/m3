@@ -23,7 +23,7 @@ eCast typ e = InF (ECast typ e)-}
 
 unLocE (LocE _ e) = e
 locE p = (\(Loc l e) -> LocE l e) <$> addLocation p
-(<**?>) :: MParser LocE -> MParser (LocE -> Expr LocE) -> MParser LocE
+(<**?>) :: MParser LocE -> MParser (LocE -> Expr Type LocE) -> MParser LocE
 p <**?> maybefp = locE (p <**> (fromMaybe unLocE <$> optional maybefp))
 
 leftAssoc :: MParser a -> MParser b -> (a -> b -> a -> a) -> MParser a
@@ -103,7 +103,7 @@ pAssignmentOperator = choice . map token $
   ,PlusAssign
   ] -- TODO Also handle operator-assignments, once lexer and token definitions have it.
 
-pUnaryOperator :: MParser (LocE -> Expr LocE)
+pUnaryOperator :: MParser (LocE -> Expr Type LocE)
 pUnaryOperator = eUnary <$> choice (map token unaryOperators)
   where
     eUnary (_,Asterix) = EDeref

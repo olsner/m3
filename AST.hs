@@ -1,11 +1,11 @@
-{-# LANGUAGE TypeSynonymInstances,DeriveDataTypeable,DeriveFunctor #-}
+{-# LANGUAGE TypeSynonymInstances,DeriveDataTypeable,DeriveFunctor,TypeFamilies,StandaloneDeriving,FlexibleContexts,UndecidableInstances #-}
 
 module AST where
 
 import Control.Applicative
 import Control.Monad.RWS
 
-import Data.Data (Data,Typeable)
+import Data.Data (Data,Typeable,Typeable1)
 import Data.List (intercalate)
 import Data.Maybe (fromJust)
 
@@ -47,11 +47,14 @@ locData (Loc _ x) = x
 -- A unit is a set of imports and *one* declaration of the toplevel entity.
 data Unit e =
   Unit { unitImports :: [Name], unitDecl :: LocDecl e }
-  deriving (Show,Eq,Data,Typeable)
+  --deriving (Show,Eq,Data,Typeable)
+deriving instance (Show e, Show (ET e)) => Show (Unit e)
+deriving instance (Show e, Data e, Typeable e, Data (ET e)) => Data (Unit e)
+deriving instance Typeable1 Unit
 importedUnits :: Map Name (Unit e) -> Name -> [Name]
 importedUnits units name = snd $ execRWS (go name) units S.empty
   where
-    go :: Name -> RWS (Map Name (Unit e)) [Name] (Set Name) ()
+    -- go :: Name -> RWS (Map Name (Unit e)) [Name] (Set Name) ()
     go name = gets (S.member name) >>= \member -> when (not member) (add name)
     add name = do
       modify (S.insert name)
@@ -60,8 +63,8 @@ importedUnits units name = snd $ execRWS (go name) units S.empty
 
 -- unitExports :: Unit e -> LocDecl e
 
-type VarDecl e = Loc (Type,Name,Maybe e)
-type TypDecl = Loc (Name,Type)
+type VarDecl e = Loc (ET e,Name,Maybe e)
+type TypDecl t = Loc (Name,t)
 
 type LocStatement e = Loc (Statement e)
 data Show e => Statement e =
@@ -73,33 +76,43 @@ data Show e => Statement e =
   -- into nested CompoundStmt's after checking for conflicting variables as
   -- part of the scopechecking.
   | VarDecl [LocDecl e]
-  | TypDecl Name Type
+  | TypDecl Name (ET e)
   | CompoundStmt [LocDecl e] [LocStatement e]
   | IfStmt e (LocStatement e) (LocStatement e)
   | WhileStmt e (LocStatement e)
   | BreakStmt
   | ContinueStmt
-  deriving (Show,Eq,Data,Typeable)
+  --deriving (Show,Eq,Data,Typeable)
+deriving instance (Show e, Show (ET e)) => Show (Statement e)
+deriving instance Typeable1 Statement
+deriving instance (Data (ET e), Show e, Data e, Typeable e) => Data (Statement e)
 
-data Decl e = Decl Name (Def e) deriving (Show,Eq,Data,Typeable)
+data Decl e = Decl Name (Def e) -- deriving (Show,Eq,Data,Typeable)
+deriving instance (Show e, Show (ET e)) => Show (Decl e)
+deriving instance Typeable1 Decl
+deriving instance (Show e, Data e, Typeable e, Data (ET e)) => Data (Decl e)
 type LocDecl e = Loc (Decl e)
 
-data FormalParam =
-    FormalParam Type (Maybe Name)
+data FormalParam t =
+    FormalParam t (Maybe Name)
   | VarargParam
   deriving (Show,Eq,Ord,Data,Typeable)
-type FormalParams = [FormalParam]
+type FormalParams t = [FormalParam t]
 
 data Def e =
     ModuleDef [LocDecl e]
-  | FunctionDef { funReturnType :: Type, funArgs :: FormalParams, funCode :: LocStatement e }
-  | ExternalFunction { funLinkage :: Maybe String, funReturnType :: Type, funArgs :: FormalParams, funExternalName :: Name }
-  | VarDef Type (Maybe e)
-  | TypeDef Type
-
-  deriving (Show,Eq,Data,Typeable)
+  | FunctionDef { funReturnType :: ET e, funArgs :: FormalParams (ET e), funCode :: LocStatement e }
+  | ExternalFunction { funLinkage :: Maybe String, funReturnType :: ET e, funArgs :: FormalParams (ET e), funExternalName :: Name }
+  | VarDef (ET e) (Maybe e)
+  | TypeDef (ET e)
+  --deriving (Show,Eq,Data,Typeable)
+deriving instance (Show e, Show (ET e)) => Show (Def e)
+deriving instance Typeable1 Def
+deriving instance (Show e, Data e, Typeable e, Data (ET e)) => Data (Def e)
 type LocDef e = Loc (Def e)
 
+-- Perhaps make this parameterized too, so we can easily make locationed types,
+-- types with variables (pre-type-inference), etc.
 data Type =
     TVoid
   | TInt
@@ -111,19 +124,44 @@ data Type =
   | TPtr Type
   | TNullPtr -- pointer of any type...
   | TArray Int Type
-  | TFunction Type FormalParams
+  | TFunction Type (FormalParams Type)
+  -- Maybe the struct type doesn't need to include names of fields?
+  -- But struct field access currently requires that we know at the use site
+  -- which fields are available. Maybe a desugaring for fields where
+  -- x.y expands to *get_y(x) with get_y declared as "[Y] get_y(X);".
+  -- The struct syntax would automatically declare functions for you, but they
+  -- could also be implemented manually.
+  -- (This means we need overloading to support multiple structs with the same
+  -- field names.)
   | TStruct [Loc (Name,Type)]
+  -- TODO Use UType, UTypeVar instead
   | TNamedType Name
   deriving (Show,Eq,Ord,Data,Typeable)
 
-mapFormalParamTypes :: Monad m => (Type -> m Type) -> FormalParams -> m FormalParams
+-- "Full" type - everything has an exact type. The result of type inference.
+data FType t = FType t
+  deriving (Show,Eq,Ord,Data,Typeable)
+
+-- Uninferred, unresolved type
+data UType =
+  -- Expands to a freshly generated type variable name when inferred
+    UFreshVar
+  -- Wildcard type unifies with anything, can be used to span the shape of
+  -- something without specifying the whole type.
+  -- Not sure what the syntax for this will be, probably ?
+  | UWildcard
+  -- May refer to user-defined types or type-function arguments or fresh type
+  -- vars, but will start out referring only to user-defined types.
+  | UTypeVar Name
+  | UType (FType UType)
+  deriving (Show,Eq,Ord,Data,Typeable)
+
+mapFormalParamTypes :: Monad m => (t -> m t) -> FormalParams t -> m (FormalParams t)
 mapFormalParamTypes f = mapM f'
   where
     f' VarargParam = return VarargParam
     f' (FormalParam typ name) = f typ >>= \typ -> return (FormalParam typ name)
 
---type TypeFold m = Location -> Type -> m Type
---foldTypeM :: Functor m => Monad m => TypeFold m -> TypeFold m
 foldTypeM f loc t = f loc =<< case t of
   (TConst typ) -> TConst <$> g typ
   (TPtr typ) -> TPtr <$> g typ
@@ -138,7 +176,7 @@ foldTypeM f loc t = f loc =<< case t of
       typ <- g' loc typ
       return (Loc loc (name,typ))
 
-data Expr e =
+data Expr t e =
     EFunCall e [e]
   -- TODO Use Tok instead of Token - expressions have associated location info anyway.
   | EBinary Token e e
@@ -152,7 +190,7 @@ data Expr e =
   | EFieldAccess Name e -- ^ A field access (foo.bar where foo is of a struct type having 'bar' as a member)
   | EArrToPtr e
   | ESeq e e -- ^ Sequencing expression, ESeq a b = (a,b)
-  | ECast Type e -- ^ Cast of an expression to a given type. ECast typ e == cast<[typ]>(e)
+  | ECast t e -- ^ Cast of an expression to a given type. ECast typ e == cast<[typ]>(e)
   -- 
   | EVarRef Name
   -- Literals
@@ -161,8 +199,18 @@ data Expr e =
   | EBool Bool
   | EChar Char
   | ENullPtr
-  deriving (Show,Eq,Data,Typeable)
+  deriving (Show,Eq,Data,Typeable,Functor)
 
-data TypedE = TypedE Location Type (Expr TypedE) deriving (Show,Eq,Data,Typeable)
-data LocE = LocE Location (Expr LocE) deriving (Show,Eq,Data,Typeable)
+-- TODO Use this instead of the explicit 't' parameter to Statement etc
+type family ET e :: *
+type instance ET (Expr t e) = t
+type instance ET LocE = Type
+type instance ET TypedE = Type
+type instance ET UTypedE = UType
+
+data UTypedE = UTypedE Location UType (Expr UType UTypedE)
+  deriving (Show,Eq,Data,Typeable)
+data TypedE = TypedE Location Type (Expr Type TypedE)
+  deriving (Show,Eq,Data,Typeable)
+data LocE = LocE Location (Expr Type LocE) deriving (Show,Eq,Data,Typeable)
 

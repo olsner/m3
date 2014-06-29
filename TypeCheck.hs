@@ -188,7 +188,7 @@ inScopeVars vars m = f [] vars
     var (TypeDef typ) = Type typ
     var x = error ("Unhandled definition "++show x)
 
-tcStmt :: Functor m => MonadIO m => Type -> [FormalParam] -> LocStatement LocE -> TC m (LocStatement TypedE)
+tcStmt :: Functor m => MonadIO m => Type -> [FormalParam Type] -> LocStatement LocE -> TC m (LocStatement TypedE)
 tcStmt ret args (Loc loc stmt) = traceM ("tcStmt "++show stmt) $ Loc loc <$> case stmt of
   (ReturnStmt e)     -> ReturnStmt <$> tcExprAsType ret e
   (ExprStmt e)       -> ExprStmt <$> tcExpr e
@@ -219,7 +219,7 @@ tcExprAsType expT e@(LocE loc _) = traceM ("tcExprAsType "++show expT++" "++show
     Just typed' -> return typed'
     Nothing -> tcError loc ("Expression "++show typed++" not of expected type "++show expT++" but "++show t++", and no implicit conversions were available")
 
-tcParams :: Functor m => MonadIO m => [FormalParam] -> [LocE] -> TC m [TypedE]
+tcParams :: Functor m => MonadIO m => [FormalParam Type] -> [LocE] -> TC m [TypedE]
 tcParams (FormalParam typ _:ps) (x:xs) = liftM2 (:) (tcExprAsType typ x) (tcParams ps xs)
 tcParams [VarargParam]          xs     = mapM tcExpr xs
 tcParams (VarargParam:_)        _      = tcError dummyLocation "Vararg param in non-last position. The type-checker should have caught this already!"

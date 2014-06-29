@@ -68,7 +68,7 @@ mkValue :: ValueKind -> Type -> String -> Value
 mkValue k typ s = Value k typ s
 valueText v = encodeType (valueType v)++' ':valueTextNoType v
 
-runCGM :: (Functor m, Monad m) => FormalParams -> CGMT m a -> WriterT String m a
+runCGM :: (Functor m, Monad m) => FormalParams Type -> CGMT m a -> WriterT String m a
 runCGM args = fmap fst . flip runStateT (initialState args) . runCounterT 0
   where
     initialState args = CGState {
@@ -133,8 +133,8 @@ structFieldOffset loc (TPtr t@(TStruct _)) name = structFieldOffset loc t name
 structFieldOffset loc typ name = cgError loc ("structFieldOffset: failed looking up "++show name++" in "++show typ)
 
 -- | Encode a formal parameter as a LLVM type (e.g. "i32") or type + name (as "i32 %param")
-encodeFormal :: Bool        -- ^ Include variable name for parameter lists?
-             -> FormalParam -- ^ Formal parameter
+encodeFormal :: Bool             -- ^ Include variable name for parameter lists?
+             -> FormalParam Type -- ^ Formal parameter
              -> String
 encodeFormal True (FormalParam typ (Just name)) = encodeType typ++" %"++encodeName name
 encodeFormal _ (FormalParam typ _) = encodeType typ
@@ -267,7 +267,7 @@ withFresh typ m = fresh >>= \r -> let v = mkValue Variable typ r in v <$ m v
 
 cgTypedE :: TypedE -> CGM Value
 cgTypedE (TypedE l t e) = cgExpr l t e
-cgExpr :: Location -> Type -> Expr TypedE -> CGM Value
+cgExpr :: Location -> Type -> Expr Type TypedE -> CGM Value
 cgExpr loc typ e = case e of
   (EBool b) -> return (mkValue ConstExpr typ (if b then "1" else "0"))
   (EInt i) -> return (mkValue ConstExpr typ (show i))

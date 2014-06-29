@@ -14,7 +14,7 @@ import qualified Data.Set as S
 import Data.Map (Map)
 import qualified Data.Map as M
 
-import Data.Generics hiding (Unit)
+import Data.Generics
 
 import System.IO
 

@@ -60,7 +60,7 @@ listOf p = sepBy p (token Comma)
 pSimpleName = (\(_,nm) -> QualifiedName [nm]) <$> identifier
 pName = QualifiedName . map snd <$> sepBy1 identifier (token DoubleColon)
 pStringName = (\(_,str) -> QualifiedName [str]) <$> string
+pLocName = addLocation pName
 
-data ParserState = PState (Map Name Type) deriving Show
-
-initialParserState = PState M.empty
+type ParserState = ()
+initialParserState = ()

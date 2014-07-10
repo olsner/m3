@@ -84,8 +84,8 @@ mapMapM f = liftM M.fromList . mapM (\(k,v) -> (,) k `liftM` f v) . M.toList
 stringfindUnits :: Map Name (Unit TypedE) -> (Map Name (Unit TypedE), Map String Int)
 stringfindUnits = runStringFinder . mapMapM getStrings
 
-printLLVM :: (Functor m, MonadIO m, MonadReader (Map Name (Unit TypedE)) m) => FilePath -> Name -> m ()
-printLLVM outfile name = do
+printLLVM :: (Functor m, MonadIO m, MonadReader (Map Name (Unit TypedE)) m) => FilePath -> Loc Name -> m ()
+printLLVM outfile (Loc _ name) = do
   output <- execWriterT $ do
     (units, stringMap) <- asks stringfindUnits
     local (const units) $ do

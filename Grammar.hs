@@ -2,7 +2,8 @@
 
 module Grammar
   (pUnit
-  ,pName
+  ,pName {- from Grammar.Utils -}
+  ,pLocName {- from Grammar.Utils -}
   ,runParser {- from Parser -}
   ,initialParserState {- from Grammar.Utils -}
   ) where
@@ -32,8 +33,8 @@ pTopLevelDecl = singleton <$> addLocation (choice
   ]) <|>
     pVarDecl (\typ name e -> Decl name (VarDef typ e))
 
-pImport :: MParser Name
-pImport = keyword "import" *> pName <* token Semicolon
+pImport :: MParser (Loc Name)
+pImport = keyword "import" *> pLocName <* token Semicolon
 
 pFunction = (\ret nm params code -> Decl nm (FunctionDef ret params code)) <$>
     pType <*> pName <*> pFormalParamList <*!> addLocation pCompoundStatement

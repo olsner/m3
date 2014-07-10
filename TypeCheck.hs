@@ -24,7 +24,7 @@ import Counter() -- Also implements Applicative for StateT o.o
 
 data VarType = Const | Global | NonConst deriving (Show)
 data Binding = Var VarType Type | Alias Name | Type Type deriving (Show)
-type ModBinding = Either (Unit LocE) (Unit TypedE)
+data ModBinding = Untyped (Unit LocE) | Typed (Unit TypedE) | Blackhole
 type ModMap = Map Name ModBinding
 data TCState = TCState { bindings :: Map Name Binding, modules :: ModMap }
 type TC = StateT TCState
@@ -66,10 +66,17 @@ inScope name bind m = do
   modifyBindings (const s)
   return r
 
-typecheck :: (Functor m, MonadIO m, MonadReader (Map Name (Unit LocE)) m) => Name -> m (Map Name (Unit TypedE))
-typecheck name = do
-  mods <- asks (M.map Left)
-  snd . M.mapEither id . modules . snd <$> runTC (tcUnitByName name) mods
+typedBindings :: Map Name ModBinding -> Map Name (Unit TypedE)
+typedBindings = M.mapMaybe f
+  where
+    f (Typed x) = Just x
+    f _ = Nothing
+
+typecheck :: (Functor m, MonadIO m, MonadReader (Map Name (Unit LocE)) m) => Loc Name -> m (Map Name (Unit TypedE))
+typecheck (Loc loc name) = do
+  mods <- asks (M.map Untyped)
+  newMods <- modules . snd <$> runTC (tcUnitByName loc name) mods
+  return (typedBindings newMods)
 
 traceM :: MonadIO m => Show a => String -> m a -> m a
 --traceM str m = liftIO (putStrLn str) >> m >>= \x -> liftIO (putStr (str++": => "++show x++"\n")) >> return x
@@ -87,31 +94,28 @@ withDef _loc name local def = traceM (printf "withDef %s local %s: %s" (show nam
   (VarDef typ _) -> inScope name (Var Global typ) . inScope local (Alias name)
   (TypeDef typ) -> inScope name (Type typ) . inScope local (Alias name)
 
-withImport name m = do
-  unit <- tcUnitByName name
+withImport (Loc loc name) m = do
+  unit <- tcUnitByName loc name
   traceM (printf "withImport %s" (show name)) (withUnitImported unit m)
 
 withArg (FormalParam typ (Just name)) m = inScope name (Var Const typ) m
 withArg _ m = m
 
-tcUnitByName :: Functor m => MonadIO m => Name -> TC m (Unit TypedE)
-tcUnitByName name = do
+tcUnitByName :: Functor m => MonadIO m => Location -> Name -> TC m (Unit TypedE)
+tcUnitByName loc name = do
   res <- getModule name -- errors if module not found - it must be found
   -- TODO debugging-printing
   -- _ <- liftIO (printf "tcUnitByName: %s: %s\n" (show name) (either (const "not yet typechecked") (const "already typechecked") res))
   case res of
-    Left untyped -> tcUnit name untyped
-    Right typed -> return typed
+    Untyped untyped -> tcUnit loc name untyped
+    Typed typed -> return typed
+    Blackhole -> tcError loc "Recursive module import"
 
--- TODO Do this properly so that we can give an error message with a location
--- instead whenever there's recursion.
-putBlackhole name = putModule name (error "Recursive module inclusion")
-
-tcUnit :: Functor m => MonadIO m => Name -> Unit LocE -> TC m (Unit TypedE)
-tcUnit name (Unit imports decl) = traceM ("tcUnit "++show name) $ do
-  putBlackhole name
+tcUnit :: Functor m => MonadIO m => Location -> Name -> Unit LocE -> TC m (Unit TypedE)
+tcUnit loc name (Unit imports decl) = traceM ("tcUnit "++show name) $ do
+  putModule name Blackhole
   unit <- Unit imports <$> foldr withImport (tcDecl (QualifiedName []) decl) imports
-  putModule name (Right unit)
+  putModule name (Typed unit)
   return unit
 
 tcDecl :: Functor m => MonadIO m => Name -> LocDecl LocE -> TC m (LocDecl TypedE)

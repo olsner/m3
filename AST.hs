@@ -24,9 +24,10 @@ qualifyName (QualifiedName xs) (QualifiedName ys) = QualifiedName (xs++ys)
 qualifyName1 (QualifiedName xs) x = QualifiedName (xs++[x])
 encodeName (QualifiedName xs) = intercalate "__" xs
 
-data Location = Location { locStart :: SourcePos, locEnd :: SourcePos } deriving (Eq,Ord,Data,Typeable)
+data Location = Location { locStart :: SourcePos, locEnd :: SourcePos } | CommandLine deriving (Eq,Ord,Data,Typeable)
 dummyLocation = Location x x where x = initialPos "<unknown>"
 instance Show Location where
+  show CommandLine = "command line"
   show (Location start end) = if sourceName start == sourceName end
     then sourceName start++" ("++showSameFile++")"
     else show start++" .. "++show end
@@ -46,7 +47,7 @@ locData (Loc _ x) = x
 
 -- A unit is a set of imports and *one* declaration of the toplevel entity.
 data Unit e =
-  Unit { unitImports :: [Name], unitDecl :: LocDecl e }
+  Unit { unitImports :: [Loc Name], unitDecl :: LocDecl e }
   --deriving (Show,Eq,Data,Typeable)
 deriving instance (Show e, Show (ET e)) => Show (Unit e)
 deriving instance (Show e, Data e, Typeable e, Data (ET e)) => Data (Unit e)
@@ -58,7 +59,7 @@ importedUnits units name = snd $ execRWS (go name) units S.empty
     go name = gets (S.member name) >>= \member -> when (not member) (add name)
     add name = do
       modify (S.insert name)
-      mapM_ go =<< asks (unitImports . fromJust . M.lookup name)
+      mapM_ go =<< asks (map locData . unitImports . fromJust . M.lookup name)
       tell [name]
 
 -- unitExports :: Unit e -> LocDecl e

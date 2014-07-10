@@ -1,0 +1,31 @@
+# Tests for command line parsing and error output
+
+dist/build/m3/m3 nosuchmodule
+<<<
+>>>
+>>>2
+m3: command line: Error: Can't locate module QualifiedName ["nosuchmodule"]
+>>>= 1
+
+./test.sh -
+<<<
+import nosuchmodule;
+module temp_test;
+int main(int argc, [[const char]] argv) {
+	return 0;
+}
+>>>
+>>>2
+m3: temp_test.m (line 1, column 8..20): Error: Can't locate module QualifiedName ["nosuchmodule"]
+>>>= 1
+
+# Causes stack overflow instead of nice error message
+./test.sh -
+<<<
+import temp_test;
+module temp_test;
+int main(int argc, [[const char]] argv) {
+	return 0;
+}
+>>>
+>>>= 2

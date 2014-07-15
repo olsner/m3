@@ -176,7 +176,7 @@ renameShadowed (Loc loc stmt) = Loc loc <$>
     fDef loc (TypeDef typ) = TypeDef <$> fType loc typ
     fDef loc def = scError loc ("Unexpected local def "++ show def)
 
-    fType = foldTypeM f
+    fType = foldFTypeM f
       where
         f _ (TNamedType name) = TNamedType <$> getName name
         f _ t = return t

@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances,FlexibleContexts,UndecidableInstances,ScopedTypeVariables,PatternGuards #-}
+{-# LANGUAGE FlexibleInstances,FlexibleContexts,UndecidableInstances,ScopedTypeVariables,PatternGuards,RankNTypes #-}
 
 module Types.Conv (implicitConversions) where
 
@@ -22,7 +22,7 @@ type Conv = TypedE -> TypedE
 -- Search: find paths from a to b, returning some kind of evidence of the path afterwards
 -- A path from a to b to c should be able to reuse b->c information in the search from a to b (in the form of the evidence?)
 newtype Search c a b = Search { runSearch :: a -> [(b,b -> a -> c)] }
-type ConvF = Search (TypedE -> TypedE) Type Type
+type ConvF = Search (TypedE -> TypedE) (Type FType) (Type FType)
 
 --traceShow msg x = x `seq` trace (msg++show x) x
 --traceFun msg f = traceShow (msg++" OUT: ") . f . traceShow (msg++" IN: ")
@@ -63,12 +63,16 @@ Search x <> Search y = Search $ \t ->
       -- g maps from 'from' (t) to 't1', h from 't1' to 't2' (to)
       (t2,(\to from -> h to t1 . g t1 from))
 
-one = TypedE dummyLocation TInt (EInt 1)
-zero = TypedE dummyLocation TInt (EInt 0)
+t = wrapT
 
-retype to _ (TypedE loc _ e) = TypedE loc to e
-cast to _ expr@(TypedE loc _ _) = TypedE loc to (ECast to expr)
-boolToInt _ _ cond@(TypedE loc _ _) = TypedE loc TInt (EConditional cond one zero)
+one = TypedE dummyLocation tInt (EInt 1)
+zero = TypedE dummyLocation tInt (EInt 0)
+
+retype :: Type FType -> Type FType -> (TypedE -> TypedE)
+retype to _ (TypedE loc _ e) = TypedE loc (t to) e
+cast :: Type FType -> Type FType -> (TypedE -> TypedE)
+cast to _ expr@(TypedE loc _ _) = TypedE loc (t to) (ECast (t to) expr)
+boolToInt _ _ cond@(TypedE loc _ _) = TypedE loc tInt (EConditional cond one zero)
 {-
 toInt to TInt = id
 toInt to TChar = cast to TChar
@@ -81,22 +85,22 @@ toChar to from = case from of
   TBool -> cast TChar TInt . boolToInt TInt TBool
   _ -> error ("toChar: to "++show to++" from "++show from)
 
-intNotZero TBool TInt = TypedE dummyLocation TBool . EBinary (initialPos "<generated>",NotEqual) zero
+intNotZero TBool TInt = TypedE dummyLocation tBool . EBinary (initialPos "<generated>",NotEqual) zero
 intNotZero to TChar = intNotZero to TInt . cast TInt TChar
 intNotZero a b = error ("intNotZero: to "++show a++" from "++show b)
 
-ptrNotNull TBool from = TypedE dummyLocation TBool . EBinary (initialPos "<generated>",NotEqual) (TypedE dummyLocation from ENullPtr)
-ptrNotNull a b = error ("ptrNotNull: to "++show a++" from "++show b)
+ptrNotNull TBool from e@(TypedE loc _ _) = TypedE loc tBool (EBinary (initialPos "<generated>",NotEqual) (TypedE loc (t from) ENullPtr) e)
+ptrNotNull a b _ = error ("ptrNotNull: to "++show a++" from "++show b)
 
-arrToPtr to (TArray _ _) (TypedE _ _ (EDeref expr@(TypedE loc _ _))) = TypedE loc to (EArrToPtr expr)
+arrToPtr to (TArray _ _) (TypedE _ _ (EDeref expr@(TypedE loc _ _))) = TypedE loc (t to) (EArrToPtr expr)
 arrToPtr to from _ = error ("arrToPtr: to "++show to++" from "++show from)
 
 removeConst = Search $ \t -> case t of
-  (TConst t') -> [(t',retype)]
+  (TConst (FType t')) -> [(t',retype)]
   _ -> []
 qualificationConv = Search $ traceFun "qualificationConv" $ \t -> case t of
-  TPtr (TFunction _ _) -> []
-  TPtr pointee -> [(TPtr (TConst pointee),retype),(t,retype)]
+  TPtr (FType (TFunction _ _)) -> []
+  TPtr pointee -> [(TPtr (tConst pointee),retype),(t,retype)]
   (TFunction _ _) -> []
   _ -> []
 integralPromo = Search $ traceFun "integralPromo" $ \t -> case t of
@@ -110,10 +114,10 @@ integralConv = Search $ \t -> case t of
   where convChar t = [(TChar,toChar),(t,retype)]
 pointerConv = Search $ \t -> case t of
   -- To avoid doubling types, don't convert void pointers to void pointers...
-  TPtr (TConst TVoid) -> []
-  TPtr TVoid -> []
-  TPtr (TConst _) -> [(TPtr (TConst TVoid),cast),(t,retype)]
-  TPtr _ -> [(TPtr TVoid,cast),(t,retype)]
+  TPtr (FType (TConst (FType TVoid))) -> []
+  TPtr (FType TVoid) -> []
+  TPtr (FType (TConst _)) -> [(TPtr (tConst tVoid),cast),(t,retype)]
+  TPtr _ -> [(TPtr tVoid,cast),(t,retype)]
   _ -> []
 booleanConv :: ConvF
 booleanConv = Search $ \t -> case t of
@@ -125,19 +129,19 @@ arrayToPtr = Search $ \t -> case t of
   t@(TArray _ elem) -> [(t,const (const id)),(TPtr elem,arrToPtr)]
   _ -> []
 funcToPtr = Search $ \t -> case t of
-  (TFunction _ _) -> [(TPtr t,retype)]
+  (TFunction _ _) -> [(TPtr (wrapT t),retype)]
   _ -> []
 addConst = Search $ \t -> case t of
   TConst _ -> []
-  TPtr t2 -> [(TPtr (TConst t2), retype), (t,retype)]
-  _ -> [(TConst t, retype), (t,retype)]
+  TPtr t2 -> [(TPtr (FType (TConst t2)), retype), (t,retype)]
+  _ -> [(TConst (FType t), retype), (t,retype)]
 
-implicitConversions :: Type -> Type -> Maybe Conv
-implicitConversions to from
+implicitConversions :: FType -> FType -> Maybe Conv
+implicitConversions (FType to) (FType from)
   | to == from = Just id
   | TNullPtr <- from = case to of
       TPtr _ -> Just (cast to from)
-      TConst (TPtr _) -> Just (cast to from)
+      TConst (FType (TPtr _)) -> Just (cast to from)
       _ -> error ("Null-pointer conversion to "++show to)
   | otherwise = fmap (\f -> f to from) $ lookup to $ runSearch implicitConversionSearch from
 

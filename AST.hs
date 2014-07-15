@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeSynonymInstances,DeriveDataTypeable,DeriveFunctor,TypeFamilies,StandaloneDeriving,FlexibleContexts,UndecidableInstances #-}
+{-# LANGUAGE TypeSynonymInstances,DeriveDataTypeable,DeriveFunctor,TypeFamilies,StandaloneDeriving,FlexibleContexts,UndecidableInstances,NoMonomorphismRestriction #-}
 
 module AST where
 
@@ -97,7 +97,7 @@ type LocDecl e = Loc (Decl e)
 data FormalParam t =
     FormalParam t (Maybe Name)
   | VarargParam
-  deriving (Show,Eq,Ord,Data,Typeable)
+  deriving (Show,Eq,Ord,Data,Typeable,Functor)
 type FormalParams t = [FormalParam t]
 
 data Def e =
@@ -114,18 +114,18 @@ type LocDef e = Loc (Def e)
 
 -- Perhaps make this parameterized too, so we can easily make locationed types,
 -- types with variables (pre-type-inference), etc.
-data Type =
+data Type t =
     TVoid
   | TInt
 -- Should probably be revived and used to replace TInt, TChar, TBool by the same type. Or just deleted.
 --  | TSizedInt Int -- i8 => TSizedInt 8, etc
   | TChar
   | TBool
-  | TConst Type
-  | TPtr Type
+  | TConst t
+  | TPtr t
   | TNullPtr -- pointer of any type...
-  | TArray Int Type
-  | TFunction Type (FormalParams Type)
+  | TArray Int t
+  | TFunction t (FormalParams t)
   -- Maybe the struct type doesn't need to include names of fields?
   -- But struct field access currently requires that we know at the use site
   -- which fields are available. Maybe a desugaring for fields where
@@ -134,13 +134,13 @@ data Type =
   -- could also be implemented manually.
   -- (This means we need overloading to support multiple structs with the same
   -- field names.)
-  | TStruct [Loc (Name,Type)]
+  | TStruct [Loc (Name,t)]
   -- TODO Use UType, UTypeVar instead
   | TNamedType Name
-  deriving (Show,Eq,Ord,Data,Typeable)
+  deriving (Show,Eq,Ord,Data,Typeable,Functor)
 
 -- "Full" type - everything has an exact type. The result of type inference.
-data FType t = FType t
+data FType = FType (Type FType)
   deriving (Show,Eq,Ord,Data,Typeable)
 
 -- Uninferred, unresolved type
@@ -154,8 +154,40 @@ data UType =
   -- May refer to user-defined types or type-function arguments or fresh type
   -- vars, but will start out referring only to user-defined types.
   | UTypeVar Name
-  | UType (FType UType)
+  | UType (Type UType)
   deriving (Show,Eq,Ord,Data,Typeable)
+
+class TypeF f where
+  wrapT :: Type f -> f
+  unwrapT :: f -> Type f
+  liftT :: (Type f -> Type f) -> (f -> f)
+  liftT f = wrapT . f . unwrapT
+  liftTM :: Applicative m => (Type f -> m (Type f)) -> (f -> m f)
+  liftTM f t = wrapT <$> f (unwrapT t)
+
+tBool = wrapT TBool
+tChar = wrapT TChar
+tInt = wrapT TInt
+tVoid = wrapT TVoid
+tNullPtr = wrapT TNullPtr
+tPtr p = wrapT (TPtr p)
+tArray n t = wrapT (TArray n t)
+tConst t = wrapT (TConst t)
+tFunction ret args = wrapT (TFunction ret args)
+
+instance TypeF FType where
+  wrapT = FType
+  unwrapT (FType t) = t
+
+instance TypeF UType where
+  wrapT = UType
+  unwrapT (UType t) = t
+  liftTM f t = case t of
+    UType t -> UType <$> f t
+    _ -> pure t
+  liftT f t = case t of
+    UType t -> UType (f t)
+    _ -> t
 
 mapFormalParamTypes :: Monad m => (t -> m t) -> FormalParams t -> m (FormalParams t)
 mapFormalParamTypes f = mapM f'
@@ -163,7 +195,8 @@ mapFormalParamTypes f = mapM f'
     f' VarargParam = return VarargParam
     f' (FormalParam typ name) = f typ >>= \typ -> return (FormalParam typ name)
 
-foldTypeM f loc t = f loc =<< case t of
+foldTypeM :: Applicative m => Monad m => (Location -> t -> m t) -> Location -> Type t -> m (Type t)
+foldTypeM f loc t = case t of
   (TConst typ) -> TConst <$> g typ
   (TPtr typ) -> TPtr <$> g typ
   (TArray n typ) -> TArray n <$> g typ
@@ -171,11 +204,25 @@ foldTypeM f loc t = f loc =<< case t of
   (TStruct fields) -> TStruct <$> mapM namedG fields
   _ -> return t
   where
-    g = g' loc
-    g' = foldTypeM f
+    g = f loc
     namedG (Loc loc (name,typ)) = do
-      typ <- g' loc typ
+      typ <- f loc typ
       return (Loc loc (name,typ))
+
+foldFTypeM :: Applicative m => Monad m => (Location -> Type FType -> m (Type FType)) -> Location -> FType -> m FType
+foldFTypeM f loc t = lift (f loc) =<< g' loc t
+  where
+    g = foldTypeM (lift . f)
+    g' = lift . g
+    lift = liftTM
+
+foldUTypeM f = g'
+  where
+    lift f loc t = case t of
+      UType t -> UType <$> f loc t
+      _ -> return t
+    g = foldTypeM (lift f)
+    g' = lift g
 
 data Expr t e =
     EFunCall e [e]
@@ -205,13 +252,13 @@ data Expr t e =
 -- TODO Use this instead of the explicit 't' parameter to Statement etc
 type family ET e :: *
 type instance ET (Expr t e) = t
-type instance ET LocE = Type
-type instance ET TypedE = Type
+type instance ET LocE = FType
+type instance ET TypedE = FType
 type instance ET UTypedE = UType
 
 data UTypedE = UTypedE Location UType (Expr UType UTypedE)
   deriving (Show,Eq,Data,Typeable)
-data TypedE = TypedE Location Type (Expr Type TypedE)
+data TypedE = TypedE Location FType (Expr FType TypedE)
   deriving (Show,Eq,Data,Typeable)
-data LocE = LocE Location (Expr Type LocE) deriving (Show,Eq,Data,Typeable)
+data LocE = LocE Location (Expr FType LocE) deriving (Show,Eq,Data,Typeable)
 

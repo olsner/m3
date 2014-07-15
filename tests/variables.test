@@ -66,4 +66,6 @@ mpz tmp1, tmp2, acc, den, num;
 int main(int argc, [[const char]] argv) {
 	return tmp1.size; // Just some field
 }
+>>>
+>>>2
 >>>= 0

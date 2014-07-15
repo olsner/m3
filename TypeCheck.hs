@@ -160,7 +160,7 @@ tcDef loc name local def = traceM ("tcDef ("++show loc++") "++show name++": "++s
     funType@(FType (TFunction retT args)) <- tcType loc (tFunction retT args)
     addBinding name (Var NonConst funType)
     addBinding local (Alias name)
-    FunctionDef retT args <$> foldr withArg (tcStmt retT args code) args
+    FunctionDef retT args <$> foldr withArg (tcStmt retT code) args
   (ExternalFunction linkage ret args extname) -> do
     funType@(FType (TFunction ret args)) <- tcType loc (tFunction ret args)
     addBinding name (External extname NonConst funType)
@@ -208,16 +208,16 @@ inScopeVars vars m = f [] vars
     var (TypeDef typ) = Type typ
     var x = error ("Unhandled definition "++show x)
 
-tcStmt :: Functor m => MonadIO m => FType -> [FormalParam FType] -> LocStatement LocE -> TC m (LocStatement TypedE)
-tcStmt ret args (Loc loc stmt) = traceM ("tcStmt "++show stmt) $ Loc loc <$> case stmt of
+tcStmt :: Functor m => MonadIO m => FType -> LocStatement LocE -> TC m (LocStatement TypedE)
+tcStmt ret (Loc loc stmt) = traceM ("tcStmt "++show stmt) $ Loc loc <$> case stmt of
   (ReturnStmt e)     -> ReturnStmt <$> tcExprAsType ret e
   (ExprStmt e)       -> ExprStmt <$> tcExpr e
   ReturnStmtVoid | FType TVoid <- ret -> return ReturnStmtVoid
   ReturnStmtVoid     -> tcError loc ("void return in function returning "++show ret)
   EmptyStmt          -> return EmptyStmt
-  CompoundStmt vars xs    -> inScopeVars vars (\vars' -> CompoundStmt vars' <$> mapM (tcStmt ret args) xs)
-  IfStmt cond t f -> IfStmt <$> tcExprAsType tBool cond <*> tcStmt ret args t <*> tcStmt ret args f
-  WhileStmt cond body -> WhileStmt <$> tcExprAsType tBool cond <*> tcStmt ret args body
+  CompoundStmt vars xs    -> inScopeVars vars (\vars' -> CompoundStmt vars' <$> mapM (tcStmt ret) xs)
+  IfStmt cond t f -> IfStmt <$> tcExprAsType tBool cond <*> tcStmt ret t <*> tcStmt ret f
+  WhileStmt cond body -> WhileStmt <$> tcExprAsType tBool cond <*> tcStmt ret body
   BreakStmt -> return BreakStmt
   ContinueStmt -> return ContinueStmt
   other -> tcError loc ("tcStmt: Unknown statement "++show other)

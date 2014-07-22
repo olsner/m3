@@ -12,7 +12,11 @@ import Grammar.Utils
 
 pStructField = genVarDecl (\typ name () -> (name, typ)) (pure ())
 
-pType = (wrapT <$> pLeftType) <**> pArraySuffix
+pType = choice
+  [{-keyword "any" $> UFreshVar
+  ,-}(wrapT <$> pLeftType) <**> pArraySuffix
+  ]
+-- There is no freeform syntax for functions?
 pLeftType = choice
   [keyword "void" $> TVoid
   ,keyword "int" $> TInt
@@ -20,10 +24,9 @@ pLeftType = choice
   ,keyword "bool" $> TBool
   ,keyword "const" *> (TConst <$> pType)
   ,keyword "struct" *> (TStruct <$> inBraces (concat <$> many pStructField))
-  --,keyword "let" $> TFreshVariable
   ,inBrackets (TPtr <$> commit pType)
   ,TNamedType <$> pName
-  ] <|> failParse "Out of luck in pLeftType"
+  ]
 --pArraySuffix :: MParser (FType -> FType)
 pArraySuffix = maybe id (\n -> wrapT . TArray n) <$> optional (snd <$> inBrackets integer)
 

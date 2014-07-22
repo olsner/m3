@@ -19,6 +19,7 @@ import CppLexer (lexCpp)
 import CodeGen
 import TypeCheck (typecheck)
 import ScopeCheck (scopecheck)
+--import TypeInference (inferTypes)
 import Grammar (pUnit, pName, runParser, initialParserState)
 
 printError :: Location -> String -> a
@@ -136,6 +137,7 @@ mapMapM f m = M.fromList <$> mapM (secondM f) (M.toList m)
 process :: Options -> Loc Name -> ModMap -> IO ()
 process opts name mods'' = do
   mods' <- mapMapM scopecheck (M.mapMaybe id mods'')
+  --mapM_ print . M.toList =<< runReaderT (inferTypes name) mods'
   mods <- runReaderT (typecheck name) mods'
   let outfile = outputPath opts </> encodeName (locData name) ++ ".ll"
   --mapM_ print (M.toList mods)

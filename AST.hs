@@ -212,15 +212,15 @@ foldTypeM f loc t = case t of
 foldFTypeM :: Applicative m => Monad m => (Location -> Type FType -> m (Type FType)) -> Location -> FType -> m FType
 foldFTypeM f loc t = lift (f loc) =<< g' loc t
   where
+    -- This seems wrong. The argument to foldTypeM should involve foldFTypeM
+    -- (observe: foldFTypeM f has the type of the first argument to foldTypeM)
     g = foldTypeM (lift . f)
     g' = lift . g
     lift = liftTM
 
 foldUTypeM f = g'
   where
-    lift f loc t = case t of
-      UType t -> UType <$> f loc t
-      _ -> return t
+    lift f loc = liftTM (f loc)
     g = foldTypeM (lift f)
     g' = lift g
 

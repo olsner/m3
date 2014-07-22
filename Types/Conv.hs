@@ -32,9 +32,6 @@ traceFun _ f = f
 
 concatMapMap f = traceFun "concatMapMap" (M.toList . M.fromList . concat . map f)
 
---runSearch :: Search c a b -> a -> [(b,b -> a -> c)]
---runSearch (Search f) = f
-
 firstOf :: Show b => Ord b => [Search c a b] -> Search c a b
 firstOf (Search f:xs) = Search $ \a ->
   case f a of [] -> runSearch (oneOf xs) a; xs -> xs

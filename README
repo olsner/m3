@@ -1,0 +1,6 @@
+Build:
+$ cabal configure
+$ cabal build
+
+Test:
+$ shelltest -c tests -- -j8

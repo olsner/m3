@@ -22,8 +22,12 @@ import Types.Conv
 
 import Counter() -- Also implements Applicative for StateT o.o
 
-data VarType = Const | Global | NonConst deriving (Show)
-data Binding = Var VarType Type | Alias Name | Type Type deriving (Show)
+data VarType = Const | NonConst deriving (Show)
+data Binding
+  = Var VarType Type
+  | External Name VarType Type
+  | Alias Name
+  | Type Type deriving (Show)
 type ModBinding = Either (Unit LocE) (Unit TypedE)
 type ModMap = Map Name ModBinding
 data TCState = TCState { bindings :: Map Name Binding, modules :: ModMap }
@@ -47,8 +51,15 @@ getBinding loc name = do
   let r = M.lookup name bs
   case r of
     Just (Alias alias) -> getBinding loc alias
-    Just r             -> return (name,r)
+    Just r -> return (name,r)
     Nothing -> tcError loc ("getBinding "++show name++": Name not found\n"++unlines (map show (M.toList bs)))
+getVarBinding loc name = do
+  b <- getBinding loc name
+  case b of
+    (_,Type t) -> tcError loc ("getBinding "++show name++": type used as a variable")
+    (_,External extname vartype typ) -> return (extname,vartype,typ)
+    (name,Var vartype typ)           -> return (name,vartype,typ)
+    (_,bind) -> tcError loc ("getBinding "++show name++": unexpected binding " ++ show bind ++ " found")
 getBoundType loc name = do
   b <- getBinding loc name
   case b of
@@ -83,8 +94,9 @@ withDecl name (Loc loc decl@(Decl local def)) = traceM ("withDecl "++show decl++
 withDef _loc name local def = traceM (printf "withDef %s local %s: %s" (show name) (show local) (show def)) . case def of
   (ModuleDef decls) -> withDecls name decls
   (FunctionDef retT args _) -> inScope name (Var NonConst (TFunction retT args)) . inScope local (Alias name)
-  (ExternalFunction _ ret args _) -> inScope name (Var NonConst (TFunction ret args)) . inScope local (Alias name)
-  (VarDef typ _) -> inScope name (Var Global typ) . inScope local (Alias name)
+  (ExternalFunction _ ret args extname) ->
+    inScope name (External extname NonConst (TFunction ret args)) . inScope local (Alias name)
+  (VarDef typ _) -> inScope name (Var NonConst typ) . inScope local (Alias name)
   (TypeDef typ) -> inScope name (Type typ) . inScope local (Alias name)
 
 withImport name m = do
@@ -143,13 +155,13 @@ tcDef loc name local def = traceM ("tcDef ("++show loc++") "++show name++": "++s
     FunctionDef retT args <$> foldr withArg (tcStmt retT args code) args
   (ExternalFunction linkage ret args extname) -> do
     funType@(TFunction ret args) <- tcType loc (TFunction ret args)
-    addBinding name (Var NonConst funType)
+    addBinding name (External extname NonConst funType)
     addBinding local (Alias name)
     return (ExternalFunction linkage ret args extname)
   (VarDef typ e) -> do
     typ <- tcType loc typ
     let unconst (TConst t) = t; unconst t = t
-    addBinding name (Var Global (unconst typ))
+    addBinding name (Var NonConst (unconst typ))
     addBinding local (Alias name)
     VarDef typ <$> maybeM (tcExprAsType typ) e
   (TypeDef typ) -> do
@@ -227,7 +239,7 @@ tcParams []                     []     = return []
 tcParams formal                 actual = tcError dummyLocation ("Argument number mismatch. Remaining formals: "++show formal++", actuals: "++show actual)
 
 tcLValueExpr loc e = do
-  lv@(TypedE _ typ ptrExpr) <- tcExpr e
+  lv@(TypedE _ _ ptrExpr) <- tcExpr e
   case ptrExpr of
     (EDeref _) -> return lv
     _ -> tcError loc ("Not an lvalue: "++show e)
@@ -239,10 +251,12 @@ tcExpr (LocE loc e) = traceM ("tcExpr "++show loc++" "++show e) $ case e of
   (EString str) -> return (typedE (TPtr (TConst TChar)) (EString str))
   (EChar c) -> return (typedE TChar (EChar c))
   (EVarRef name) -> do
-    (varName,Var qual typ) <- getBinding loc name
-    return $ typedE typ $ case qual of
-      Const -> EVarRef varName
-      _     -> EDeref $ typedE (TPtr typ) $ EVarRef varName
+    (varName,vartype,typ) <- getVarBinding loc name
+    let lvalRef t n = typedE t $ EDeref $ typedE (TPtr t) $ EVarRef n
+        rvalRef t n = typedE t (EVarRef n)
+    return $ case vartype of
+      Const -> rvalRef typ varName
+      _     -> lvalRef typ varName
   (EFunCall fun args) -> do
     (TypedE _ typ fune) <- tcExpr fun
     fun_ <- typedE (TPtr typ) <$> case fune of

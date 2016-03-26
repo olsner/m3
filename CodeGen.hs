@@ -157,7 +157,6 @@ cgDef loc name def = case def of
     tell "}\n\n"
   (ExternalFunction _linkage ret args extname) -> do
     tell ("declare "++encodeType ret++" @"++encodeName extname++"("++intercalate "," (map (encodeFormal False) args)++")\n")
-    tell ("@"++encodeName name++" = alias linker_private "++encodeType (TPtr (TFunction ret args))++" @"++encodeName extname++"\n")
   (VarDef (TConst _) e) -> do
     res <- runCGM [] (maybeM cgTypedE e)
     let initVal = case res of

@@ -1,0 +1,181 @@
+x <: y means x is a specialization (subset) of y (sort of)
+       i.e. that cast from x to y is possible implicitly
+
+QUAL-CONV
+  [x] <: [const x], x != function, because const function is not valid
+
+  Duplicates addConst?
+
+INT-PROMO (widening casts)
+  char <: int
+
+CHAR-CONV (implicit cast to char)
+  bool <: char
+  int <: char
+
+  TODO: dubious. char should not mean 'byte', and narrowing casts should
+  be explicit.
+
+PTR-VOID-CONV (implicit cast to voidp)
+  [const x] <: [const void]
+  [x] <: [void]
+
+  (this makes void sort of (forall a. a), but void could also be Void the empty
+  type)
+
+BOOL-CONV (implicit zero/null comparison)
+  [x] <: bool
+  int <: bool
+  char <: bool
+
+ARRAY-TO-PTR
+  [x] <: x[n]
+
+FUNC-TO-PTR
+  [function] <: function
+
+ADDCONST
+  [x] :> [const x]
+  x :> const x
+
+REMOVECONST
+  const x <: x
+
+  copying conversion. for rvalues, const is redundant anyway.
+
+
+An implicit conversion is a sequence of:
+  REMOVECONST
+  QUAL-CONV
+  [INT-PROMO, CHAR-CONV, PTR-VOID-CONV, BOOL-CONV]
+  [ARRAY-TO-PTR, FUNC-TO-PTR]
+
+
+----
+
+TYPEOF x = y : add x into the environment as having type y
+y = TYPEOF x : look up type of x in the environment
+
+
+DEF (FunctionDef ret args stmts) :
+  STMT ret args stmt * stmts
+
+STMT ret (return expr) :
+  TC ret expr
+
+STMT _ (expr) :
+  TC _ expr
+
+STMT ret (return) : ret = void
+  (or error: returns void but expects value)
+
+STMT _ ().
+STMT ret (vars; stmts) :
+  VAR var * vars (
+    -- with vars in scope
+    STMT ret stmt * stmts
+  )
+
+STMT ret (if (x) y else z) :
+  TC bool x,
+  STMT ret y,
+  STMT ret z.
+
+STMT ret (while (x) y) :
+  TC bool x,
+  STMT ret y.
+
+STMT _ break.
+STMT _ continue.
+
+VAR (x = typedef y).
+VAR (type x = expr) :
+  TYPEOF x = type (type may be 'any' or a specific type)
+  TC t expr
+VAR (type x) : TYPEOF x = type.
+
+-- literals!
+TC bool false.
+TC bool true.
+TC int lit-integer.
+TC [char] lit-string.
+TC char lit-char.
+
+TC t var :
+  t = TYPEOF var.
+
+TC t (fun(args...)) :
+  TC (Fun t formals) fun,
+  TC-arg * (formals >< args)
+
+TC-arg t expr: TC u expr, u <: t.
+
+TC-lval t (*x) :
+  TC t (*x).
+
+( TC-lval causes errors for other expressions )
+
+TC t (lval = rval) :
+  TC-lval t lval,
+  TC u rval,
+  t <: u.
+
+TC t (x `op` y) :
+  TC u x,
+  TC v y,
+  BINOP op t u v.
+
+TC t (x[y]) :
+  TC [t] x,
+  TC u y,
+  u :> int.
+
+TC t (x.y) :
+  TC u x,
+  struct {y : t} :> u.
+
+( prefix- and postfix ++ and -- )
+TC t (x`op`): TC-lval t x.
+TC t (`op`x): TC-lval t x.
+TC t (*x) :
+  TC (Ptr t) x.
+
+TC t (op x):
+  TC t x,
+  UNARY op t t.
+
+TC TNullPtr (null).
+
+TC t (cast u expr):
+  TC v expr,
+  CAST t v.
+
+CAST [x] [void].
+( TODO Remove const outside pointers from the type system )
+CAST (const [x]) [void].
+CAST [const x] [const void].
+
+BINOP : RELOP | ADD | ARITH.
+
+RELOP =,!=,<,>,>=,<= bool u v : _ = ARITH u v.
+ADD +,-,*,/,% :
+  t u v : t = ARITH u v.
+  t u v :
+    u <: Ptr w,
+    v <: int,
+    t <: u.
+  t u v :
+    u <: int,
+    v <: Ptr w,
+    t <: v.
+ARITH int int.
+ARITH char char.
+
+UNARY ! bool.
+UNARY - t : ADD - t t t.
+
+
+Ptr x <: Ptr y: x = y.
+Ptr (Const x) :> Ptr y : x <: y.
+Ptr Void :> Ptr x.
+Ptr (Const Void) :> Ptr (Const x).

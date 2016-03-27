@@ -135,7 +135,6 @@ data Type t =
   -- (This means we need overloading to support multiple structs with the same
   -- field names.)
   | TStruct [Loc (Name,t)]
-  -- TODO Use UType, UTypeVar instead
   | TNamedType Name
   deriving (Show,Eq,Ord,Data,Typeable,Functor)
 
@@ -145,12 +144,9 @@ data FType = FType (Type FType)
 
 -- Uninferred, unresolved type
 data UType =
-  -- Expands to a freshly generated type variable name when inferred
+  -- Expands to a freshly generated type variable name when inferred. This will
+  -- eventually resolve to one single monomorphic type.
     UFreshVar
-  -- Wildcard type unifies with anything, can be used to span the shape of
-  -- something without specifying the whole type.
-  -- Not sure what the syntax for this will be, probably ?
-  | UWildcard
   -- May refer to user-defined types or type-function arguments or fresh type
   -- vars, but will start out referring only to user-defined types.
   | UTypeVar Name

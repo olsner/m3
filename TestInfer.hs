@@ -443,7 +443,6 @@ mgu :: CType -> CType -> Context CType
 mgu (CType s) (CType t) = mgu' s t
 mgu (CTypeVar s) t = M.fromList [(s,t)]
 mgu s (CTypeVar t) = M.fromList [(t,s)]
---mgu s t = error ("mgu: Tried to unify " ++ show s ++ " and " ++ show t)
 mgu' s t | s == t = M.empty
 mgu' (TFunction ret1 args1) (TFunction ret2 args2) = M.unions $
     [mgu ret1 ret2] ++ zipParams mgu args1 args2

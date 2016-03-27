@@ -25,7 +25,7 @@ import AST
 import Counter
 import CppToken
 import SetWriter
-import TypeCheck (maybeM)
+import Utils
 
 data ValueKind = Variable | ConstExpr | AllocaPtr deriving Show
 data Value = Value { valueKind :: ValueKind, valueType :: FType, valueTextNoType :: String } deriving Show

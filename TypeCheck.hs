@@ -1,6 +1,6 @@
 {-# LANGUAGE RankNTypes,FlexibleContexts,NoMonomorphismRestriction,TypeSynonymInstances,PatternGuards,CPP #-}
 
-module TypeCheck (typecheck,maybeM) where
+module TypeCheck (typecheck) where
 
 import Control.Applicative hiding (Const)
 import Control.Monad.Identity
@@ -19,6 +19,7 @@ import Text.Printf
 import AST
 import CppToken
 import Types.Conv
+import Utils
 
 import Counter() -- Also implements Applicative for StateT o.o
 
@@ -186,10 +187,6 @@ tcLocalDef loc name def = traceM ("tcLocalDef ("++show loc++") "++show name++": 
     VarDef typ <$> maybeM (tcExprAsType typ) e
   (TypeDef typ) -> TypeDef <$> tcType loc typ
   _ -> tcError loc ("Unexpected local definition of "++show name++" as "++show def)
-
-maybeM :: Applicative m => (a -> m b) -> Maybe a -> m (Maybe b)
-maybeM f (Just x) = Just <$> f x
-maybeM _ Nothing = pure Nothing
 
 inScopeVars :: Functor m => MonadIO m => [LocDecl LocE] -> ([LocDecl TypedE] -> TC m a) -> TC m a
 inScopeVars vars m = f [] vars

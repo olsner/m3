@@ -165,6 +165,8 @@ class TypeF f where
   liftTM :: Applicative m => (Type f -> m (Type f)) -> (f -> m f)
   liftTM f t = wrapT <$> f (unwrapT t)
 
+  foldTM :: Applicative m => Monad m => (Location -> Type f -> m (Type f)) -> Location -> f -> m f
+
 tBool = wrapT TBool
 tChar = wrapT TChar
 tInt = wrapT TInt
@@ -178,6 +180,7 @@ tFunction ret args = wrapT (TFunction ret args)
 instance TypeF FType where
   wrapT = FType
   unwrapT (FType t) = t
+  foldTM = foldFTypeM
 
 instance TypeF UType where
   wrapT = UType
@@ -188,6 +191,7 @@ instance TypeF UType where
   liftT f t = case t of
     UType t -> UType (f t)
     _ -> t
+  foldTM = foldUTypeM
 
 mapFormalParamTypes :: Monad m => (t -> m t) -> FormalParams t -> m (FormalParams t)
 mapFormalParamTypes f = mapM f'

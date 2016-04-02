@@ -12,8 +12,6 @@ import System.Environment
 import System.Exit
 import System.IO
 
-import Text.Printf
-
 import AST
 import CppLexer (lexCpp)
 import CodeGen
@@ -60,7 +58,6 @@ nameToPath (QualifiedName components) = joinPath components
 
 tryImportModule (Loc _ name) path = do
   let modPath = addExtension (path </> nameToPath name) ".m"
-  --printf "tryImportModule: %s: Trying %s\n" (show name) modPath
   e <- doesFileExist modPath
   if e then Just <$> parse modPath else return Nothing
 
@@ -120,6 +117,7 @@ parseArgs args = (opts, mods)
     addOption ('-':'I':path) opts =
       opts { includePath = path : includePath opts }
     addOption ('-':'o':path) opts = opts { outputPath = path }
+    addOption opt _ = cmdError ("Error: invalid option " ++ show opt)
     (optargs,mods) = partition ((== '-').head) args
 
 main = do

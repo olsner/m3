@@ -229,6 +229,7 @@ foldTypeM f t = case t of
   TBool -> pure TBool
   TNullPtr -> pure TNullPtr
   TNamedType n -> pure (TNamedType n)
+  TDummyBase -> pure TDummyBase
   where
     g = f
     named (Loc loc (name,typ)) = (Loc loc . (,) name) <$> f typ

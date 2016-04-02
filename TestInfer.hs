@@ -78,28 +78,6 @@ type FConstr = Constraint UType
 type CSet t = Set (Constraint t)
 type CCSet = CSet CType
 
-{-
-data Expr t e =
-    EFunCall e [e]
-  | EConditional e e e -- ^ ?: expressions: condition, true-value, false-value
-  | EAssignment Token e e -- FIXME EBinary with assignment operator...
-  -- | Dereferencing of a pointer. Doubles as lvalue-to-rvalue conversion,
-  -- inserted by type checking. All variables are pointers, surprisingly.
-  | EDeref e
-  | EFieldAccess Name e -- ^ A field access (foo.bar where foo is of a struct type having 'bar' as a member)
-  | ESeq e e -- ^ Sequencing expression, ESeq a b = (a,b)
-  | EArrToPtr e
-  | ECast t e -- ^ Cast of an expression to a given type. ECast typ e == cast<[typ]>(e)
-  -- 
-  | EVarRef Name
-  -- Literals
-  | EInt Integer
-  | EBool Bool
-  | ENullPtr
-  deriving (Show,Eq,Functor)
-  -- Also bifunctor and applicative
--}
-
 class ExprF t e | e -> t where
   wrapE :: Expr t e -> e
 

@@ -65,6 +65,7 @@ importedUnits units name = snd $ execRWS (go name) units S.empty
       modify (S.insert name)
       mapM_ go =<< asks (map locData . unitImports . fromJust . M.lookup name)
       tell [name]
+type UnitMap e = Map Name (Unit e)
 
 -- unitExports :: Unit e -> LocDecl e
 

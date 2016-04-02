@@ -84,10 +84,10 @@ typedBindings = M.mapMaybe f
     f (Typed x) = Just x
     f _ = Nothing
 
-typecheck :: (Functor m, MonadIO m, MonadReader (Map Name (Unit LocE)) m) => Loc Name -> m (Map Name (Unit TypedE))
-typecheck (Loc loc name) = do
-  mods <- asks (M.map Untyped)
-  newMods <- modules . snd <$> runTC (tcUnitByName loc name) mods
+typecheck :: (Functor m, MonadIO m) => Loc Name -> UnitMap LocE -> m (UnitMap TypedE)
+typecheck (Loc loc name) mods = do
+  let untyped = M.map Untyped mods
+  newMods <- modules . snd <$> runTC (tcUnitByName loc name) untyped
   return (typedBindings newMods)
 
 traceM :: MonadIO m => Show a => String -> m a -> m a

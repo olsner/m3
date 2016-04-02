@@ -138,7 +138,7 @@ process :: Options -> Loc Name -> ModMap -> IO ()
 process opts name mods'' = do
   mods' <- mapMapM scopecheck (M.mapMaybe id mods'')
   --mapM_ print . M.toList =<< runReaderT (inferTypes name) mods'
-  mods <- runReaderT (typecheck name) mods'
+  mods <- typecheck name mods'
   let outfile = outputPath opts </> encodeName (locData name) ++ ".ll"
   --mapM_ print (M.toList mods)
   runReaderT (printLLVM outfile name) mods

@@ -67,7 +67,6 @@ tFunction ret args = wrapT (TFunction ret args)
 
 instance TypeF CType where
   wrapT = CType
-  unwrapT (CType t) = t
   foldTM f (CType t) = f =<< foldTypeM (foldTM f) t
   foldTM f t = pure t
 

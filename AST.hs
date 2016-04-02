@@ -185,9 +185,9 @@ data UType =
 
 class TypeF f where
   wrapT :: Type f -> f
-  unwrapT :: f -> Type f
   foldTM :: (Applicative m, Monad m) => (Type f -> m f) -> f -> m f
-  foldTM f = g
+
+generalFoldTM unwrapT f = g
     where g t = f =<< foldTypeM g (unwrapT t)
 
 tBool = wrapT TBool
@@ -202,13 +202,12 @@ tFunction ret args = wrapT (TFunction ret args)
 
 instance TypeF FType where
   wrapT = FType
-  unwrapT (FType t) = t
+  foldTM = generalFoldTM (\(FType t) -> t)
 
 instance TypeF UType where
   wrapT = UType
-  unwrapT (UType t) = t
   foldTM f (UType t) = f =<< foldTypeM (foldTM f) t
-  foldTM f t = pure t
+  foldTM _ t = pure t
 
 mapFormalParamTypes :: Applicative m => (t -> m t') -> FormalParams t -> m (FormalParams t')
 mapFormalParamTypes f = traverse f'

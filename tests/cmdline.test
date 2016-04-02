@@ -4,7 +4,7 @@ dist/build/m3/m3 nosuchmodule
 <<<
 >>>
 >>>2
-m3: command line: Error: Can't locate module QualifiedName ["nosuchmodule"]
+m3: command line: Error: Can't locate module "nosuchmodule"
 >>>= 1
 
 ./test.sh -
@@ -16,7 +16,7 @@ int main(int argc, [[const char]] argv) {
 }
 >>>
 >>>2
-m3: temp_test.m (line 1, column 8..20): Error: Can't locate module QualifiedName ["nosuchmodule"]
+m3: temp_test.m (line 1, column 8..20): Error: Can't locate module "nosuchmodule"
 >>>= 1
 
 # Causes stack overflow instead of nice error message

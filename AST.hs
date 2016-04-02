@@ -17,12 +17,15 @@ import qualified Data.Set as S
 import CppToken (Token)
 import SourcePos
 
-newtype Name = QualifiedName [String] deriving (Show,Eq,Ord,Data,Typeable)
+newtype Name = QualifiedName [String] deriving (Eq,Ord,Data,Typeable)
 qualifyName (QualifiedName xs) (QualifiedName ys) = QualifiedName (xs++ys)
 -- Used for e.g. renaming passes or anything that wants to add suffixes to
 -- names
 qualifyName1 (QualifiedName xs) x = QualifiedName (xs++[x])
 encodeName (QualifiedName xs) = intercalate "__" xs
+mkName s = QualifiedName [s]
+instance Show Name where
+  show (QualifiedName xs) = show (intercalate "::" xs)
 
 data Location = Location { locStart :: SourcePos, locEnd :: SourcePos } | CommandLine deriving (Eq,Ord,Data,Typeable)
 dummyLocation = Location x x where x = initialPos "<unknown>"

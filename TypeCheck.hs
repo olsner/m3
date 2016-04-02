@@ -135,24 +135,26 @@ tcUnit loc name (Unit imports decl) = traceM ("tcUnit "++show name) $ do
   return unit
 
 tcDecl :: Functor m => MonadIO m => Name -> LocDecl LocE -> TC m (LocDecl TypedE)
-tcDecl name (Loc loc decl@(Decl local def)) = traceM (printf "tcDecl %s %s %s" (show name)(show local) (show decl)) $
+tcDecl name (Loc loc decl@(Decl local def)) = traceM (printf "tcDecl %s %s %s" (show name) (show local) (show decl)) $
   Loc loc <$> Decl local <$> tcDef loc (qualifyName name local) local def
 
 invalidFormalParams [] = False
 invalidFormalParams xs = any (== VarargParam) (init xs)
 
 -- tcType :: Functor m => Location -> Type -> TC m Type
-tcType loc t = traceM (printf "tcType %s %s" (show loc) (show t)) $ foldFTypeM f loc t
+-- The goal of this function is to map all "named types" to their actual types
+-- and to check for "invalid formal params" (i.e. varargs in non-last position).
+tcType loc t = traceM (printf "tcType %s %s" (show loc) (show t)) $ g t
   where
-    --f :: Location -> Type FType -> TC m (Type FType)
-    f loc t = traceM (printf "tcType.f %s %s" (show loc) (show t)) $ case t of
-      (TNamedType name) -> unwrapT <$> (tcType loc =<< getBoundType loc name)
-      (TFunction ret fps) -> TFunction <$> tcType loc ret <*> tcFormalParams loc fps
-      _ -> return t
+    g = foldTM f
+    f t = {-traceM (printf "tcType.f %s" (show t)) $-} do
+      case t of
+        (TNamedType name) -> g =<< getBoundType loc name
+        (TFunction _ fps) -> tcFormalParams loc fps >> pure (FType t)
+        _ -> {-traceM (printf "tcType.f_ %s" (show t)) $-} pure (FType t)
 
-tcFormalParams loc fps = do
+tcFormalParams loc fps =
   when (invalidFormalParams fps) (tcError loc "Malformed formal parameter list")
-  mapFormalParamTypes (tcType loc) fps
 
 tcDef :: Functor m => MonadIO m => Location -> Name -> Name -> Def LocE -> TC m (Def TypedE)
 tcDef loc name local def = traceM ("tcDef ("++show loc++") "++show name++": "++show def) $ case def of
@@ -199,7 +201,7 @@ inScopeVars vars m = f [] vars
       def <- tcLocalDef loc name def
       inScope name (var def) (f (Loc loc (Decl name def):acc) vs)
 
-    var (VarDef typ _) = case unwrapT typ of
+    var (VarDef typ _) = case unFType typ of
       (TConst typ) -> Var Const typ
       _ -> Var NonConst typ
     var (TypeDef typ) = Type typ
@@ -267,7 +269,7 @@ tcExpr (LocE loc e) = traceM ("tcExpr "++show loc++" "++show e) $ case e of
     fun_ <- typedE (tPtr typ) <$> case fune of
                 (EDeref (TypedE _ _ funptr)) -> return funptr
                 _ -> tcError loc ("Function call on non-lvalue "++show fune)
-    case unwrapT typ of
+    case unFType typ of
       (TFunction retT params) -> do
         args_ <- tcParams params args
         return (typedE retT (EFunCall fun_ args_))
@@ -284,7 +286,7 @@ tcExpr (LocE loc e) = traceM ("tcExpr "++show loc++" "++show e) $ case e of
   (EArrayIndex arr ix) -> do
     arr'@(TypedE _ arrT _) <- tcExpr arr
     ix' <- tcExprAsType tInt ix
-    elemType <- case unwrapT arrT of
+    elemType <- case unFType arrT of
           TPtr x -> return x
           TArray _ elem -> return elem
           _ -> tcError loc ("Indexing performed on non-indexable type "++show arrT)
@@ -293,7 +295,7 @@ tcExpr (LocE loc e) = traceM ("tcExpr "++show loc++" "++show e) $ case e of
     (TypedE structLoc typ exp) <- tcExpr el
     -- TODO Debugging/tracing output control
     -- trace ("EFieldAccess: "++show typ++" "++show exp++", "++show field) $ return ()
-    ft <- case unwrapT typ of
+    ft <- case unFType typ of
           TStruct fields -> case lookup field (map locData fields) of
             Just ft -> return ft
             Nothing -> tcError loc ("Field "++show field++" not found in struct "++show typ)
@@ -317,7 +319,7 @@ tcExpr (LocE loc e) = traceM ("tcExpr "++show loc++" "++show e) $ case e of
   ECast to e -> do
     to <- tcType loc to
     typed@(TypedE _ typ _) <- tcExpr e
-    when (not (checkCast (unwrapT to) (unwrapT typ))) $ tcError loc ("Invalid cast from "++show typ++" to "++show to)
+    when (not (checkCast (unFType to) (unFType typ))) $ tcError loc ("Invalid cast from "++show typ++" to "++show to)
     return (typedE to (ECast to typed))
   other -> tcError loc ("tcExpr: Unknown expression "++show other)
   where
@@ -335,7 +337,7 @@ relopRule _ x = return (tBool, x)
 additiveRule _ t@(FType (TPtr _)) = return (t, tInt)
 additiveRule loc t = arithmeticRule loc t
 
-arithmeticRule loc t = case unwrapT t of
+arithmeticRule loc t = case unFType t of
   TInt -> return (t,t)
   TChar -> return (t,t)
   _ -> tcError loc ("arithmeticRule: unhandled type "++show t)

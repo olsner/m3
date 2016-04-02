@@ -8,6 +8,7 @@ import Control.Monad.RWS
 import Data.Data (Data,Typeable,Typeable1)
 import Data.List (intercalate)
 import Data.Maybe (fromJust)
+import Data.Traversable hiding (mapM)
 
 import Data.Map (Map)
 import qualified Data.Map as M
@@ -71,7 +72,7 @@ type VarDecl e = Loc (ET e,Name,Maybe e)
 type TypDecl t = Loc (Name,t)
 
 type LocStatement e = Loc (Statement e)
-data Show e => Statement e =
+data Statement e =
     EmptyStmt
   | ReturnStmt e
   | ReturnStmtVoid
@@ -100,8 +101,14 @@ type LocDecl e = Loc (Decl e)
 data FormalParam t =
     FormalParam t (Maybe Name)
   | VarargParam
-  deriving (Show,Eq,Ord,Data,Typeable,Functor)
+  deriving (Eq,Ord,Data,Typeable,Functor)
 type FormalParams t = [FormalParam t]
+instance Show t => Show (FormalParam t) where
+  show VarargParam = "..."
+  show (FormalParam t (Just n)) = show t ++ " " ++ show n
+  show (FormalParam t _) = show t
+  showList ps = (++) ("(" ++ intercalate ", " (map show ps) ++ ")")
+
 
 data Def e =
     ModuleDef [LocDecl e]
@@ -139,11 +146,31 @@ data Type t =
   -- field names.)
   | TStruct [Loc (Name,t)]
   | TNamedType Name
-  deriving (Show,Eq,Ord,Data,Typeable,Functor)
+  | TDummyBase
+  deriving (Eq,Ord,Data,Typeable,Functor)
+instance Show t => Show (Type t) where
+  showsPrec p t = case t of
+    TConst t -> showParen (p > 10) $ showString "const " . showsPrec (p - 1) t
+    TPtr t -> brackets (shows t)
+    TArray n t -> showParen (p > 10) $
+        showsPrec (p + 1) t . brackets (shows n)
+    TFunction t params -> showParen (p > 10) $
+        showsPrec 11 t . showString " ()" . shows params
+    TStruct _fields -> showString "struct {}"
+    TVoid -> showString "void"
+    TInt -> showString "int"
+    TChar -> showString "char"
+    TBool -> showString "bool"
+    TNullPtr -> showString "nullptr_t"
+    TNamedType n -> shows n
+    TDummyBase -> showString "TOP"
+    where brackets f = showChar '[' . f . showChar ']'
 
 -- "Full" type - everything has an exact type. The result of type inference.
-data FType = FType (Type FType)
-  deriving (Show,Eq,Ord,Data,Typeable)
+data FType = FType { unFType :: Type FType }
+  deriving (Eq,Ord,Data,Typeable)
+instance Show FType where
+  showsPrec p (FType t) = showsPrec p t
 
 -- Uninferred, unresolved type
 data UType =
@@ -159,12 +186,9 @@ data UType =
 class TypeF f where
   wrapT :: Type f -> f
   unwrapT :: f -> Type f
-  liftT :: (Type f -> Type f) -> (f -> f)
-  liftT f = wrapT . f . unwrapT
-  liftTM :: Applicative m => (Type f -> m (Type f)) -> (f -> m f)
-  liftTM f t = wrapT <$> f (unwrapT t)
-
-  foldTM :: Applicative m => Monad m => (Location -> Type f -> m (Type f)) -> Location -> f -> m f
+  foldTM :: (Applicative m, Monad m) => (Type f -> m f) -> f -> m f
+  foldTM f = g
+    where g t = f =<< foldTypeM g (unwrapT t)
 
 tBool = wrapT TBool
 tChar = wrapT TChar
@@ -179,53 +203,35 @@ tFunction ret args = wrapT (TFunction ret args)
 instance TypeF FType where
   wrapT = FType
   unwrapT (FType t) = t
-  foldTM = foldFTypeM
 
 instance TypeF UType where
   wrapT = UType
   unwrapT (UType t) = t
-  liftTM f t = case t of
-    UType t -> UType <$> f t
-    _ -> pure t
-  liftT f t = case t of
-    UType t -> UType (f t)
-    _ -> t
-  foldTM = foldUTypeM
+  foldTM f (UType t) = f =<< foldTypeM (foldTM f) t
+  foldTM f t = pure t
 
-mapFormalParamTypes :: Monad m => (t -> m t) -> FormalParams t -> m (FormalParams t)
-mapFormalParamTypes f = mapM f'
+mapFormalParamTypes :: Applicative m => (t -> m t') -> FormalParams t -> m (FormalParams t')
+mapFormalParamTypes f = traverse f'
   where
-    f' VarargParam = return VarargParam
-    f' (FormalParam typ name) = f typ >>= \typ -> return (FormalParam typ name)
+    f' VarargParam = pure VarargParam
+    f' (FormalParam typ name) = (\t -> FormalParam t name) <$> f typ
 
-foldTypeM :: Applicative m => Monad m => (Location -> t -> m t) -> Location -> Type t -> m (Type t)
-foldTypeM f loc t = case t of
+foldTypeM :: Applicative m => (f -> m g) -> Type f -> m (Type g)
+foldTypeM f t = case t of
   (TConst typ) -> TConst <$> g typ
   (TPtr typ) -> TPtr <$> g typ
   (TArray n typ) -> TArray n <$> g typ
-  (TFunction ret fps) -> TFunction <$> g ret <*> mapFormalParamTypes g fps
-  (TStruct fields) -> TStruct <$> mapM namedG fields
-  _ -> return t
+  (TFunction ret fps) -> TFunction <$> f ret <*> mapFormalParamTypes f fps
+  (TStruct fields) -> TStruct <$> traverse named fields
+  TVoid -> pure TVoid
+  TInt -> pure TInt
+  TChar -> pure TChar
+  TBool -> pure TBool
+  TNullPtr -> pure TNullPtr
+  TNamedType n -> pure (TNamedType n)
   where
-    g = f loc
-    namedG (Loc loc (name,typ)) = do
-      typ <- f loc typ
-      return (Loc loc (name,typ))
-
-foldFTypeM :: Applicative m => Monad m => (Location -> Type FType -> m (Type FType)) -> Location -> FType -> m FType
-foldFTypeM f loc t = lift (f loc) =<< g' loc t
-  where
-    -- This seems wrong. The argument to foldTypeM should involve foldFTypeM
-    -- (observe: foldFTypeM f has the type of the first argument to foldTypeM)
-    g = foldTypeM (lift . f)
-    g' = lift . g
-    lift = liftTM
-
-foldUTypeM f = g'
-  where
-    lift f loc = liftTM (f loc)
-    g = foldTypeM (lift f)
-    g' = lift g
+    g = f
+    named (Loc loc (name,typ)) = (Loc loc . (,) name) <$> f typ
 
 data Expr t e =
     EFunCall e [e]

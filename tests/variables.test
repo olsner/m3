@@ -55,6 +55,7 @@ mpz tmp1, tmp2, acc, den, num;
 int main(int argc, [[const char]] argv) {
 	return 0;
 }
+>>>
 >>>2
 >>>= 0
 

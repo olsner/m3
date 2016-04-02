@@ -152,8 +152,8 @@ cgDef loc name def = case def of
     tell ")"
     tell "{\n"
     cgFunBody code
-    case unwrapT retT of
-      TVoid -> line "ret void"
+    case retT of
+      FType TVoid -> line "ret void"
       _ -> line "unreachable"
     tell "}\n\n"
   (ExternalFunction _linkage ret args extname) -> do
@@ -276,7 +276,7 @@ cgExpr loc typ e = case e of
     (fun_:args_) <- mapM cgTypedE (fun:args)
     printloc "EFunCall"
     let funcall = call fun_ args_
-    let TPtr (FType (TFunction retT _)) = unwrapT funType
+    let FType (TPtr (FType (TFunction retT _))) = funType
     if retT == tVoid
       then line funcall >> return (error "void function result used by something! In CodeGen!") -- The return value should be guaranteed unused!
       else withFresh retT (=% funcall)
@@ -286,7 +286,7 @@ cgExpr loc typ e = case e of
       (Just val) -> return val
       _ -> return (mkValue ConstExpr typ ('@':encodeName name))
   (EArrToPtr (TypedE arrLoc arrT arr)) -> do
-    (arrT',arrelem) <- case unwrapT arrT of
+    (arrT',arrelem) <- case unFType arrT of
           (TArray _ arrelem) -> return (tPtr arrT, arrelem)
           (TPtr (FType (TArray _ arrelem))) -> return (arrT, arrelem)
           typ -> cgError loc ("EArrToPtr on something not array or ptr-to-array: "++show typ++" in "++show e)
@@ -322,7 +322,7 @@ cgExpr loc typ e = case e of
     v <- cgTypedE struct
     ix <- structFieldOffset loc structT name
     printloc "EFieldAccess"
-    case unwrapT typ of
+    case unFType typ of
       TPtr _ -> withFresh typ (=% getelementptr v [zero, intValue ix tInt])
       _ -> withFresh typ (=% extractvalue v ix)
   (EPostfix (_,op) (TypedE _ _ (EDeref lvExpr))) -> do
@@ -353,13 +353,13 @@ cgExpr loc typ e = case e of
     printloc msg = locComment msg loc
 
 icmp op typ x y = withFresh typ (=% unwords ["icmp",op,valueText x++",",valueTextNoType y])
-cmpBinop tok op pos typ = case unwrapT typ of
+cmpBinop tok op pos typ = case unFType typ of
   TInt -> icmp op typ
   TBool -> icmp op typ
   TChar -> icmp op typ
   --TFloat -> fcmp op
   _ -> error (show pos++": "++show tok++" operator only supports ints, attempted on "++show typ)
-arithBinop tok op loc typ = case unwrapT typ of
+arithBinop tok op loc typ = case unFType typ of
   TInt -> f op
   TChar -> f op
   (TPtr _) -> \x y -> case op of
@@ -397,7 +397,7 @@ cgPostfixOp loc op _ _ = cgError loc ("Unknown/unimplemented postfix operator: "
 cgCast :: FType -> FType -> Value -> CGM Value
 -- The truly no-op case: the source and target (LLVM!) type are the same
 cgCast to from lv | encodeType to == encodeType from = return lv
-cgCast to from lv = case (unwrapT to, unwrapT from) of
+cgCast to from lv = case (unFType to, unFType from) of
 -- Now for the cases with actually different types :)
   (TPtr _, TPtr _) -> withFresh to (=% bitcast lv to)
   (TPtr _, TInt) -> withFresh to (=% "inttoptr "++valueText lv)

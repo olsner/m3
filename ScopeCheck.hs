@@ -16,11 +16,9 @@ import qualified Data.Map as M
 
 import Data.Generics
 
-import System.IO
-
 import AST
-
 import Counter -- o.o Also implements Applicative for StateT
+import Utils
 
 data SCState = SCState { depth :: Int, used :: Set Name, nameMap :: Map Name (Int,Name) }
 type SC m = StateT SCState (CounterT Int m)
@@ -41,9 +39,8 @@ runSC args = runCounterT 0 . flip evalStateT (SCState 0 (S.fromList argNames) (M
 scError loc msg = error (show loc++": "++msg)
 scWarn loc msg = traceIO (show loc++": "++msg)
 
---traceFunM str m x = liftIO (putStrLn (str++": "++show x)) >> m x >>= \x -> liftIO (putStrLn (str++" DONE: "++show x)) >> return x
+traceFunM str m x = liftIO (putStrLn (str++": "++show x)) >> m x >>= \x -> liftIO (putStrLn (str++" DONE: "++show x)) >> return x
 --traceM str m = liftIO (putStrLn str) >> m >>= \x -> liftIO (putStr (str++": done\n")) >> return x
-traceIO str = liftIO (hPutStrLn stderr str)
 
 inNewScope :: (MonadIO m, Typeable a, Data a) => SC m a -> SC m a
 inNewScope m = do
@@ -168,18 +165,18 @@ renameShadowed (Loc loc stmt) = Loc loc <$>
   where
     -- Should only need to handle definitions that are allowed in local scope.
     fDef loc (VarDef typ init) = do
-        typ <- fType loc typ
+        typ <- fType typ
         newInit <- case init of
           Just x -> Just <$> g x
           Nothing -> return Nothing
         return (VarDef typ newInit)
-    fDef loc (TypeDef typ) = TypeDef <$> fType loc typ
+    fDef loc (TypeDef typ) = TypeDef <$> fType typ
     fDef loc def = scError loc ("Unexpected local def "++ show def)
 
-    fType = foldTM f
+    fType t = foldTM f t
       where
-        f _ (TNamedType name) = TNamedType <$> getName name
-        f _ t = return t
+        f (TNamedType name) = FType <$> TNamedType <$> getName name
+        f t = pure (FType t)
 
     getName name = do
       existingVar <- gets (M.lookup name . nameMap)

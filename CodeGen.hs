@@ -473,4 +473,4 @@ showStringLLVM xs = "\""++(f =<< xs)++"\""
       | otherwise = [x]
 writeStrings = mapM_ (tell . makeString) . M.toList
   where
-    makeString (str,i) = printf "@.STR%d = internal constant [%d x i8] c%s\n" i (length str+1) (showStringLLVM (str++"\0"))
+    makeString (str,i) = printf "@.STR%d = private unnamed_addr constant [%d x i8] c%s\n" i (length str+1) (showStringLLVM (str++"\0"))

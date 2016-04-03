@@ -17,6 +17,7 @@ import Debug.Trace
 import Text.Printf
 
 import AST
+import CType
 import CppToken
 import Types.Conv
 import Utils
@@ -296,6 +297,7 @@ tcExpr (LocE loc e) = traceM ("tcExpr "++show loc++" "++show e) $ case e of
     -- TODO Debugging/tracing output control
     -- trace ("EFieldAccess: "++show typ++" "++show exp++", "++show field) $ return ()
     ft <- case unFType typ of
+          -- Are these type errors or rather some kind of semantic errors?
           TStruct fields -> case lookup field (map locData fields) of
             Just ft -> return ft
             Nothing -> tcError loc ("Field "++show field++" not found in struct "++show typ)

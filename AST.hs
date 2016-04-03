@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeSynonymInstances,DeriveDataTypeable,DeriveFunctor,TypeFamilies,StandaloneDeriving,FlexibleContexts,UndecidableInstances,NoMonomorphismRestriction #-}
+{-# LANGUAGE TypeSynonymInstances,DeriveDataTypeable,DeriveFunctor,TypeFamilies,StandaloneDeriving,FlexibleContexts,UndecidableInstances,NoMonomorphismRestriction,MultiParamTypeClasses,FunctionalDependencies #-}
 
 module AST where
 
@@ -258,6 +258,16 @@ data Expr t e =
   | EChar Char
   | ENullPtr
   deriving (Show,Eq,Data,Typeable,Functor)
+
+class ExprF t e | e -> t where
+  wrapE :: Expr t e -> e
+
+eFunCall f args = wrapE (EFunCall f args)
+eVarRef name = wrapE (EVarRef (mkName name))
+eSeq e1 e2 = wrapE (ESeq e1 e2)
+
+instance ExprF FType LocE where
+  wrapE = LocE dummyLocation
 
 -- TODO Use this instead of the explicit 't' parameter to Statement etc
 type family ET e :: *

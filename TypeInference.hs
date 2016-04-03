@@ -2,7 +2,7 @@
 
 module TypeInference (inferTypes) where
 
-import Control.Applicative hiding (Const)
+import Control.Applicative
 import Control.Monad.Identity
 -- "local" is used as a variable name a lot in this file, let's not get it confused with the Reader definition
 import Control.Monad.Reader hiding (local)
@@ -17,6 +17,7 @@ import Debug.Trace
 import Text.Printf
 
 import AST
+import CType
 import CppToken
 import Types.Conv
 
@@ -41,13 +42,17 @@ import Counter() -- Also implements Applicative for StateT o.o
 --    term, context and type from 1, with final substitutions applied
 --    Th * Gamma |- Th * t ~> u : Th * Tau
 
-inferTypes :: (Functor m, MonadIO m, MonadReader (Map Name (Unit LocE)) m) => Loc Name -> m (Map Name (Unit UTypedE))
-inferTypes (Loc loc name) = do
-  mods <- asks (M.map Untyped)
-  newMods <- modules . snd <$> runTI (tiUnitByName loc name) mods
+
+-- Could perhaps simplify this since we have already checked for circular
+-- dependencies before trying to infer types.
+inferTypes :: (Functor m, MonadIO m) =>
+    UnitMap CTypedE -> Loc Name -> m (UnitMap FTypedE)
+inferTypes mods (Loc loc name) = do
+  let untyped = M.map Untyped mods
+  newMods <- modules . snd <$> runTI (tiUnitByName loc name) untyped
   return (typedBindings newMods)
 
-data ModBinding = Untyped (Unit LocE) | Typed (Unit TypedE) | Blackhole
+data ModBinding = CTyped (Unit CTypedE) | FTyped (Unit FTypedE) | Blackhole
 
 typedBindings :: Map Name ModBinding -> Map Name (Unit UTypedE)
 typedBindings = M.mapMaybe f
